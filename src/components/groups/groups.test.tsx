@@ -64,6 +64,7 @@ describe("GroupView", () => {
       expect.stringContaining("Kavin"),
     ]);
     expect(within(ranks[0]).getByText("2/3")).toBeInTheDocument();
+    expect(within(ranks[0]).getByRole("link", { name: /Eswaran/ })).toHaveAttribute("href", "/app/groups/g1/members/e");
 
     // One stacked "Completed by" cell per problem.
     const twoSum = await screen.findByLabelText("Completed by Prathis, Eswaran");

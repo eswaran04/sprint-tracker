@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { leaderboard, problemKey, progressIndex } from "./groups";
+import { mkProblem } from "@/test/fixtures/problems";
+import { asMember, headToHead, leaderboard, problemKey, progressIndex, recentSolves } from "./groups";
 import type { GroupMember, GroupProgressRow } from "./types";
 
 const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12).toISOString();
@@ -38,5 +39,38 @@ describe("leaderboard", () => {
     expect(board[0]).toMatchObject({ done: 3, doneToday: 1, streak: 3, lastActive: at(2026, 10, 4) });
     expect(board[1]).toMatchObject({ done: 2, doneToday: 1, streak: 1 });
     expect(board[2]).toMatchObject({ done: 0, doneToday: 0, streak: 0, lastActive: null });
+  });
+});
+
+describe("asMember", () => {
+  it("shows your sheet with the member's completions and none of your private bits", () => {
+    const mine = [
+      mkProblem({ id: "p1", done_at: at(2026, 10, 1), starred: true, notes: "secret" }),
+      mkProblem({ id: "copy4", source_id: "p4" }),
+      mkProblem({ id: "p5" }),
+    ];
+    const theirs = asMember(mine, progressIndex(rows), "b");
+    expect(theirs.map((p) => p.done_at)).toEqual([at(2026, 9, 20), at(2026, 10, 4), null]);
+    expect(theirs.every((p) => !p.starred && p.notes === "")).toBe(true);
+    expect(mine[0].notes).toBe("secret");
+  });
+});
+
+describe("headToHead", () => {
+  it("splits problems into solved by both, only you and only them (newest first)", () => {
+    const mine = [mkProblem({ id: "p1", done_at: at(2026, 10, 1) }), mkProblem({ id: "p2", done_at: at(2026, 10, 1) }), mkProblem({ id: "p3" }), mkProblem({ id: "p4" })];
+    const theirs = [mkProblem({ id: "p1", done_at: at(2026, 10, 2) }), mkProblem({ id: "p2" }), mkProblem({ id: "p3", done_at: at(2026, 10, 1) }), mkProblem({ id: "p4", done_at: at(2026, 10, 3) })];
+    const h = headToHead(mine, theirs);
+    expect(h.both).toBe(1);
+    expect(h.meOnly).toBe(1);
+    expect(h.theyOnly.map((p) => p.id)).toEqual(["p4", "p3"]);
+  });
+});
+
+describe("recentSolves", () => {
+  it("lists done problems newest first, up to the limit", () => {
+    const ps = [mkProblem({ id: "a", done_at: at(2026, 10, 1) }), mkProblem({ id: "b" }), mkProblem({ id: "c", done_at: at(2026, 10, 3) }), mkProblem({ id: "d", done_at: at(2026, 10, 2) })];
+    expect(recentSolves(ps).map((p) => p.id)).toEqual(["c", "d", "a"]);
+    expect(recentSolves(ps, 2).map((p) => p.id)).toEqual(["c", "d"]);
   });
 });

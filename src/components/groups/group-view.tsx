@@ -25,8 +25,8 @@ import { ActivityFeed } from "./activity-feed";
 import { CopyInvite } from "./group-button";
 import { MemberAvatar, PeopleStack } from "./member-avatar";
 
-function Leaderboard({ board, total, me, isOwner, nudged, onRemove, onNudge }: {
-  board: LeaderboardRow[]; total: number; me?: string; isOwner: boolean; nudged: Set<string>;
+function Leaderboard({ groupId, board, total, me, isOwner, nudged, onRemove, onNudge }: {
+  groupId: string; board: LeaderboardRow[]; total: number; me?: string; isOwner: boolean; nudged: Set<string>;
   onRemove: (m: GroupMember) => void; onNudge: (m: GroupMember) => void;
 }) {
   return (
@@ -38,10 +38,14 @@ function Leaderboard({ board, total, me, isOwner, nudged, onRemove, onNudge }: {
           return (
             <li key={r.member.user_id} className={cn("group flex items-center gap-3 border-b px-5 py-3 last:border-b-0", r.member.user_id === me && "bg-primary/5")}>
               <span className={cn("w-5 text-center text-sm font-semibold tabular-nums", i === 0 && r.done > 0 ? "text-core" : "text-muted-foreground")}>{i + 1}</span>
-              <MemberAvatar member={r.member} className="size-8" />
+              <Link href={`/app/groups/${groupId}/members/${r.member.user_id}`} className="shrink-0" tabIndex={-1} aria-hidden>
+                <MemberAvatar member={r.member} className="size-8" />
+              </Link>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate text-sm font-medium">
-                  {r.member.display_name}
+                  <Link href={`/app/groups/${groupId}/members/${r.member.user_id}`} className="truncate hover:text-primary hover:underline">
+                    {r.member.display_name}
+                  </Link>
                   {r.member.user_id === me && <span className="text-xs font-normal text-muted-foreground">(you)</span>}
                   {r.member.role === "owner" && <Crown className="size-3.5 text-core" aria-label="Owner" />}
                 </p>
@@ -295,6 +299,7 @@ export function GroupView({ id }: { id: string }) {
       </header>
 
       <Leaderboard
+        groupId={id}
         board={g.board}
         total={total}
         me={me}
