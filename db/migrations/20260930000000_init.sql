@@ -2,7 +2,7 @@
 
 create table public.sprints (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id text not null default app.uid() references app.users (id) on delete cascade,
   title text not null,
   start_date date,
   skip_weekends boolean not null default false,
@@ -14,7 +14,7 @@ create table public.sprints (
 create table public.problems (
   id uuid primary key default gen_random_uuid(),
   sprint_id uuid not null references public.sprints (id) on delete cascade,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id text not null default app.uid() references app.users (id) on delete cascade,
   position int not null,
   name text not null,
   url text not null default '',
@@ -33,7 +33,7 @@ create table public.problems (
 
 create table public.saved_filters (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id text not null default app.uid() references app.users (id) on delete cascade,
   name text not null,
   query jsonb not null,
   created_at timestamptz not null default now()
@@ -61,17 +61,17 @@ alter table public.problems enable row level security;
 alter table public.saved_filters enable row level security;
 
 create policy "own sprints" on public.sprints for all to authenticated
-  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+  using ((select app.uid()) = user_id) with check ((select app.uid()) = user_id);
 
 create policy "own problems" on public.problems for all to authenticated
-  using ((select auth.uid()) = user_id)
+  using ((select app.uid()) = user_id)
   with check (
-    (select auth.uid()) = user_id
-    and exists (select 1 from public.sprints s where s.id = sprint_id and s.user_id = (select auth.uid()))
+    (select app.uid()) = user_id
+    and exists (select 1 from public.sprints s where s.id = sprint_id and s.user_id = (select app.uid()))
   );
 
 create policy "own saved filters" on public.saved_filters for all to authenticated
-  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+  using ((select app.uid()) = user_id) with check ((select app.uid()) = user_id);
 
 -- Bulk reschedule in one round-trip. security invoker => RLS still applies to the caller.
 create function public.reschedule_problems(changes jsonb) returns void

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "next-themes";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/supabase/client", () => ({ supabaseBrowser: () => ({ auth: { updateUser: vi.fn(async () => ({ error: null })) } }) }));
+vi.mock("@/lib/api", () => ({ saveAccent: vi.fn(async () => {}) }));
 
 import { ThemePicker } from "./theme-picker";
 

@@ -1,18 +1,19 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
-import { supabaseServer } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/firebase/admin";
+import { getUserRow } from "@/lib/db/session";
 
 export default async function AppLayout({ children }: LayoutProps<"/app">) {
-  const supabase = await supabaseServer();
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) redirect("/");
-  const meta = data.user.user_metadata ?? {};
+  const auth = await getSessionUser();
+  // An invalid/expired cookie would bounce between "/" and "/app" via the proxy; signout clears it.
+  if (!auth) redirect("/auth/expired");
+  const row = await getUserRow(auth.uid);
   const user = {
-    id: data.user.id,
-    email: data.user.email ?? "",
-    name: meta.full_name ?? meta.name ?? data.user.email ?? "You",
-    avatar: meta.avatar_url ?? meta.picture ?? null,
-    accent: typeof meta.accent === "string" ? meta.accent : null,
+    id: auth.uid,
+    email: auth.email,
+    name: row?.display_name ?? auth.name ?? (auth.email || "You"),
+    avatar: row?.avatar_url ?? auth.picture ?? null,
+    accent: row?.accent ?? null,
   };
   return <AppShell user={user}>{children}</AppShell>;
 }

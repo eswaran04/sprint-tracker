@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
 
 function GoogleIcon() {
   return (
@@ -25,13 +26,24 @@ export function GoogleSignIn({ size = "lg" }: { size?: "lg" | "default" }) {
   async function signIn() {
     setLoading(true);
     const next = params.get("next") ?? "/app";
-    const { error } = await supabaseBrowser().auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
-    if (error) {
+    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+    try {
+      const auth = firebaseAuth();
+      const cred = await signInWithPopup(auth, new GoogleAuthProvider());
+      const res = await fetch("/auth/callback", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idToken: await cred.user.getIdToken() }),
+      });
+      // The server cookie is the session; drop the client-side Firebase state.
+      await signOut(auth).catch(() => {});
+      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Sign-in failed");
+      location.assign(safeNext);
+    } catch (e) {
       setLoading(false);
-      toast.error("Sign-in failed", { description: error.message });
+      const code = (e as { code?: string }).code;
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+      toast.error("Sign-in failed", { description: e instanceof Error ? e.message : String(e) });
     }
   }
 
