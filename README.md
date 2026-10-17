@@ -45,9 +45,18 @@ npm run dev                  # http://localhost:3000
 npm run test:db              # RLS / SQL function integration tests against DATABASE_URL
 ```
 
-### 4. Deploy to Vercel
+### 4. Deploy to Firebase App Hosting (Postgres on Neon)
 
-Add the `NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT` and `DATABASE_URL` env vars (no emulator vars). Use a pooled connection string (PgBouncer, or the Neon/Cloud SQL pooler).
+1. **Neon**: create a project with database `sprintboard`. In the SQL editor, run the role statements from step 2.1 with a strong password. Then run migrations with the **direct** (non-pooler) owner URL:
+   `MIGRATION_DATABASE_URL="postgres://<owner>:<pw>@<host>/sprintboard?sslmode=require" npm run db:migrate`
+2. **Firebase**: `firebase use --add` (alias `prod`). Fill the `NEXT_PUBLIC_FIREBASE_*` values in [`apphosting.yaml`](apphosting.yaml).
+3. Store the **pooled** (`-pooler` host) app URL as a secret:
+   `firebase apphosting:secrets:set database-url --project prod`
+   Value: `postgres://sprintboard_app:<pw>@<pooler-host>/sprintboard?sslmode=require`
+4. `firebase apphosting:backends:create --project prod`. Connect this GitHub repo, root `/`, and pick the live branch. Each push to that branch rolls out.
+5. Add the backend domain (`<backend>--<project>.<region>.hosted.app`) under **Authentication → Settings → Authorized domains**.
+
+On App Hosting, `firebase-admin` uses the backend's default credentials, so `FIREBASE_SERVICE_ACCOUNT` isn't needed. Don't set any emulator variables in production.
 
 ## Scripts
 
