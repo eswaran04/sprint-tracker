@@ -7,7 +7,7 @@ create index problems_source_idx on public.problems (source_id);
 
 create table public.groups (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users (id) on delete cascade,
+  owner_id text not null references app.users (id) on delete cascade,
   sprint_id uuid not null references public.sprints (id) on delete cascade,
   name text not null,
   invite_code text not null unique,
@@ -16,7 +16,7 @@ create table public.groups (
 
 create table public.group_members (
   group_id uuid not null references public.groups (id) on delete cascade,
-  user_id uuid not null references auth.users (id) on delete cascade,
+  user_id text not null references app.users (id) on delete cascade,
   sprint_id uuid not null references public.sprints (id) on delete cascade,
   display_name text not null,
   avatar text,
@@ -30,7 +30,7 @@ create index group_members_sprint_idx on public.group_members (sprint_id);
 
 create function public.is_group_member(gid uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = auth.uid());
+  select exists (select 1 from public.group_members m where m.group_id = gid and m.user_id = app.uid());
 $$;
 
 alter table public.groups enable row level security;
@@ -41,13 +41,13 @@ create policy "members read group" on public.groups for select to authenticated
 create policy "members read roster" on public.group_members for select to authenticated
   using (public.is_group_member(group_id));
 
-revoke insert, update, delete on public.groups, public.group_members from anon, authenticated;
+revoke insert, update, delete on public.groups, public.group_members from authenticated;
 
 -- Start a group from one of your sprints.
 create function public.create_group(p_sprint uuid, p_name text, p_display_name text, p_avatar text) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
-  uid uuid := auth.uid();
+  uid text := app.uid();
   gid uuid;
 begin
   if uid is null then raise exception 'Not signed in'; end if;
@@ -76,7 +76,7 @@ language sql stable security definer set search_path = '' as $$
          (select count(*)::int from public.group_members x where x.group_id = g.id)
     from public.group_members m
     join public.groups g on g.id = m.group_id
-   where m.user_id = auth.uid()
+   where m.user_id = app.uid()
    order by g.created_at;
 $$;
 
@@ -91,14 +91,14 @@ language sql stable security definer set search_path = '' as $$
          s.title,
          (select count(*)::int from public.problems p where p.sprint_id = g.sprint_id),
          (select coalesce(max(p.original_day_no), 0)::int from public.problems p where p.sprint_id = g.sprint_id),
-         (select m.sprint_id from public.group_members m where m.group_id = g.id and m.user_id = auth.uid()),
+         (select m.sprint_id from public.group_members m where m.group_id = g.id and m.user_id = app.uid()),
          (select c.id from public.sprints c
-           where c.user_id = auth.uid() and c.copied_from = g.sprint_id
+           where c.user_id = app.uid() and c.copied_from = g.sprint_id
              and not exists (select 1 from public.group_members l where l.sprint_id = c.id)
            order by c.created_at desc limit 1)
     from public.groups g
     join public.sprints s on s.id = g.sprint_id
-   where g.invite_code = p_code and auth.uid() is not null;
+   where g.invite_code = p_code and app.uid() is not null;
 $$;
 
 -- Join via invite code: copy the sheet (or link an existing public copy). Idempotent; returns your sprint id.
@@ -106,7 +106,7 @@ create function public.join_group(p_code text, p_display_name text, p_avatar tex
 returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
-  uid uuid := auth.uid();
+  uid text := app.uid();
   g public.groups;
   sid uuid;
 begin
@@ -148,7 +148,7 @@ end $$;
 
 -- Who completed what (and when) across the group. Never exposes notes or stars.
 create function public.group_progress(p_group uuid)
-returns table (user_id uuid, problem_key uuid, done_at timestamptz)
+returns table (user_id text, problem_key uuid, done_at timestamptz)
 language sql stable security definer set search_path = '' as $$
   select m.user_id, coalesce(p.source_id, p.id), p.done_at
     from public.group_members m
@@ -159,26 +159,26 @@ $$;
 create function public.leave_group(p_group uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  if exists (select 1 from public.groups g where g.id = p_group and g.owner_id = auth.uid()) then
+  if exists (select 1 from public.groups g where g.id = p_group and g.owner_id = app.uid()) then
     raise exception 'Owners delete the group instead of leaving';
   end if;
-  delete from public.group_members m where m.group_id = p_group and m.user_id = auth.uid();
+  delete from public.group_members m where m.group_id = p_group and m.user_id = app.uid();
 end $$;
 
-create function public.remove_member(p_group uuid, p_user uuid) returns void
+create function public.remove_member(p_group uuid, p_user text) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  if not exists (select 1 from public.groups g where g.id = p_group and g.owner_id = auth.uid()) then
+  if not exists (select 1 from public.groups g where g.id = p_group and g.owner_id = app.uid()) then
     raise exception 'Only the owner can remove members';
   end if;
-  if p_user = auth.uid() then raise exception 'Owners delete the group instead'; end if;
+  if p_user = app.uid() then raise exception 'Owners delete the group instead'; end if;
   delete from public.group_members m where m.group_id = p_group and m.user_id = p_user;
 end $$;
 
 create function public.delete_group(p_group uuid) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  if not exists (select 1 from public.groups g where g.id = p_group and g.owner_id = auth.uid()) then
+  if not exists (select 1 from public.groups g where g.id = p_group and g.owner_id = app.uid()) then
     raise exception 'Only the owner can delete the group';
   end if;
   delete from public.groups g where g.id = p_group;
@@ -190,9 +190,9 @@ begin
   foreach f in array array[
     'is_group_member(uuid)', 'create_group(uuid, text, text, text)', 'my_groups()', 'group_preview(text)',
     'join_group(text, text, text, uuid)', 'group_progress(uuid)', 'leave_group(uuid)',
-    'remove_member(uuid, uuid)', 'delete_group(uuid)'
+    'remove_member(uuid, text)', 'delete_group(uuid)'
   ] loop
-    execute format('revoke all on function public.%s from anon, public', f);
+    execute format('revoke all on function public.%s from public', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;

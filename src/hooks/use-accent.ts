@@ -3,7 +3,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { ACCENT_STORAGE_KEY, DEFAULT_ACCENT, isAccent, type AccentId } from "@/lib/accents";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { saveAccent } from "@/lib/api";
 
 const root = () => document.documentElement;
 
@@ -36,11 +36,7 @@ export function useAccent({ syncToAccount = false } = {}) {
     (id: AccentId) => {
       applyAccent(id);
       if (!syncToAccount) return;
-      supabaseBrowser()
-        .auth.updateUser({ data: { accent: id } })
-        .then(({ error }: { error: { message: string } | null }) => {
-          if (error) toast.error("Couldn't save theme to your account", { description: error.message });
-        });
+      saveAccent(id).catch((e: Error) => toast.error("Couldn't save theme to your account", { description: e.message }));
     },
     [syncToAccount],
   );

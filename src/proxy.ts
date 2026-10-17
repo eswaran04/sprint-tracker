@@ -1,24 +1,12 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { SUPABASE_KEY, SUPABASE_URL } from "@/lib/supabase/env";
+import { SESSION_COOKIE } from "@/lib/firebase/env";
 
-export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_KEY, {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll: (list, headers) => {
-        list.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        list.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
-        Object.entries(headers ?? {}).forEach(([k, v]) => response.headers.set(k, v));
-      },
-    },
-  });
-
-  const { data } = await supabase.auth.getClaims();
-  const signedIn = Boolean(data?.claims);
+/**
+ * Cheap redirects based on whether a session cookie exists. This is NOT the auth check: `app/app/layout.tsx`
+ * and every `/api` route verify the cookie with firebase-admin and reject invalid or revoked sessions.
+ */
+export function proxy(request: NextRequest) {
+  const signedIn = Boolean(request.cookies.get(SESSION_COOKIE)?.value);
   const path = request.nextUrl.pathname;
 
   if (!signedIn && path.startsWith("/app")) {
@@ -32,7 +20,7 @@ export async function proxy(request: NextRequest) {
     url.pathname = "/app";
     return NextResponse.redirect(url);
   }
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

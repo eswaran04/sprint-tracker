@@ -2,10 +2,12 @@
 
 import { Loader2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabaseBrowser } from "@/lib/supabase/client";
+import { getRedirectResult, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, type User } from "firebase/auth";
+import { firebaseAuth } from "@/lib/firebase/client";
+import { hasRememberedNext, prefersRedirectSignIn, rememberNext, safeNextPath, takeRememberedNext } from "@/lib/firebase/sign-in-flow";
 
 function GoogleIcon() {
   return (
@@ -18,20 +20,82 @@ function GoogleIcon() {
   );
 }
 
+/** Exchanges the Firebase user for the server session cookie, then drops client-side Firebase state. */
+async function createSession(user: User) {
+  const res = await fetch("/auth/callback", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idToken: await user.getIdToken() }),
+  });
+  // The server cookie is the session; drop the client-side Firebase state.
+  await signOut(firebaseAuth()).catch(() => {});
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Sign-in failed");
+}
+
+function reportError(e: unknown) {
+  const code = (e as { code?: string }).code;
+  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+  toast.error("Sign-in failed", { description: e instanceof Error ? e.message : String(e) });
+}
+
+// One redirect result per page load, even if React mounts the button twice (Strict Mode, Suspense retries).
+let redirectResult: Promise<boolean> | undefined;
+
+/** Resolves true when it signed the user in and started navigating away. */
+function completeRedirectSignIn(): Promise<boolean> {
+  redirectResult ??= (async () => {
+    const next = takeRememberedNext();
+    const result = await getRedirectResult(firebaseAuth());
+    if (!result) return false; // Came back without signing in (e.g. pressed Back on Google's page).
+    await createSession(result.user);
+    location.assign(next);
+    return true;
+  })();
+  return redirectResult;
+}
+
+// Read once per page load: did this tab start a redirect sign-in? Stable so it works as an external-store snapshot.
+let returningFromRedirect: boolean | undefined;
+const isReturningFromRedirect = () => (returningFromRedirect ??= hasRememberedNext());
+const noSubscribe = () => () => {};
+
 export function GoogleSignIn({ size = "lg" }: { size?: "lg" | "default" }) {
-  const [loading, setLoading] = useState(false);
+  const [clicked, setClicked] = useState(false);
+  const [redirectChecked, setRedirectChecked] = useState(false);
+  // false on the server and during hydration, then the real value: no hydration mismatch.
+  const returning = useSyncExternalStore(noSubscribe, isReturningFromRedirect, () => false);
+  const loading = clicked || (returning && !redirectChecked);
   const params = useSearchParams();
 
+  useEffect(() => {
+    // Only touch Firebase when a redirect was started from this tab; normal visits skip it.
+    if (!returning) return;
+    completeRedirectSignIn()
+      // On success keep the spinner while the page navigates away.
+      .then((navigating) => !navigating && setRedirectChecked(true))
+      .catch((e) => {
+        setRedirectChecked(true);
+        reportError(e);
+      });
+  }, [returning]);
+
   async function signIn() {
-    setLoading(true);
-    const next = params.get("next") ?? "/app";
-    const { error } = await supabaseBrowser().auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${location.origin}/auth/callback?next=${encodeURIComponent(next)}` },
-    });
-    if (error) {
-      setLoading(false);
-      toast.error("Sign-in failed", { description: error.message });
+    setClicked(true);
+    const next = safeNextPath(params.get("next"));
+    try {
+      const auth = firebaseAuth();
+      const provider = new GoogleAuthProvider();
+      if (prefersRedirectSignIn(navigator.userAgent, navigator.maxTouchPoints)) {
+        rememberNext(next);
+        await signInWithRedirect(auth, provider); // Navigates away; the effect above finishes on return.
+        return;
+      }
+      const cred = await signInWithPopup(auth, provider);
+      await createSession(cred.user);
+      location.assign(next);
+    } catch (e) {
+      setClicked(false);
+      reportError(e);
     }
   }
 
