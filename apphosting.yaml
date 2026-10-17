@@ -1,5 +1,5 @@
 # Firebase App Hosting config. Fill the NEXT_PUBLIC_FIREBASE_* values from Project settings → Your apps (Web).
-# They are public web config, safe to commit. DATABASE_URL is a secret: never put it here as a plain value.
+# They are public web config, safe to commit. DB_PASS is a secret: never put it here as a plain value.
 runConfig:
   minInstances: 0
   maxInstances: 2
@@ -15,9 +15,15 @@ env:
     value: REPLACE_WITH_PROJECT_ID
     availability: [BUILD, RUNTIME]
 
-  # Neon pooled connection string for the sprintboard_app role:
-  #   firebase apphosting:secrets:set database-url
-  - variable: DATABASE_URL
-    secret: database-url
+  # Cloud SQL Postgres via the Cloud SQL connector (src/lib/db/pool.ts). Instance: "project:region:instance".
+  - variable: CLOUD_SQL_INSTANCE
+    value: REPLACE_WITH_PROJECT_ID:REPLACE_WITH_REGION:sprintboard
+  - variable: DB_USER
+    value: sprintboard_app
+  - variable: DB_NAME
+    value: sprintboard
+  # Password of sprintboard_app:  firebase apphosting:secrets:set sprintboard-db-pass
+  - variable: DB_PASS
+    secret: sprintboard-db-pass
   - variable: DATABASE_POOL_MAX
     value: "3"

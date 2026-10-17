@@ -45,16 +45,29 @@ npm run dev                  # http://localhost:3000
 npm run test:db              # RLS / SQL function integration tests against DATABASE_URL
 ```
 
-### 4. Deploy to Firebase App Hosting (Postgres on Neon)
+### 4. Deploy to Firebase App Hosting (Postgres on Cloud SQL)
 
-1. **Neon**: create a project with database `sprintboard`. In the SQL editor, run the role statements from step 2.1 with a strong password. Then run migrations with the **direct** (non-pooler) owner URL:
-   `MIGRATION_DATABASE_URL="postgres://<owner>:<pw>@<host>/sprintboard?sslmode=require" npm run db:migrate`
-2. **Firebase**: `firebase use --add` (alias `prod`). Fill the `NEXT_PUBLIC_FIREBASE_*` values in [`apphosting.yaml`](apphosting.yaml).
-3. Store the **pooled** (`-pooler` host) app URL as a secret:
-   `firebase apphosting:secrets:set database-url --project prod`
-   Value: `postgres://sprintboard_app:<pw>@<pooler-host>/sprintboard?sslmode=require`
+In production the app connects through the [Cloud SQL connector](https://github.com/GoogleCloudPlatform/cloud-sql-nodejs-connector) when `CLOUD_SQL_INSTANCE` is set, using `DB_USER` / `DB_PASS` / `DB_NAME` instead of `DATABASE_URL`. Use one region for the backend and the instance.
+
+1. **Cloud SQL**: create the instance, database and owner password.
+   ```bash
+   gcloud sql instances create sprintboard --database-version=POSTGRES_16 --edition=ENTERPRISE \
+     --tier=db-f1-micro --region=<region> --project=<project>
+   gcloud sql databases create sprintboard --instance=sprintboard --project=<project>
+   gcloud sql users set-password postgres --instance=sprintboard --password='<owner-pw>' --project=<project>
+   ```
+2. **Schema**: run [`cloud-sql-proxy`](https://cloud.google.com/sql/docs/postgres/sql-proxy) `<project>:<region>:sprintboard` in another terminal. Then apply migrations as `postgres`:
+   ```bash
+   MIGRATION_DATABASE_URL="postgres://postgres:<owner-pw>@127.0.0.1:5432/sprintboard" npm run db:migrate
+   ```
+   The migrations create `app_server`. Create the app login role as `postgres`, with `psql` through the proxy or with **Cloud SQL Studio** in the console:
+   `create role sprintboard_app login password '<app-pw>'; grant app_server to sprintboard_app;`
+3. **Firebase**: `firebase use --add` (alias `prod`). Fill the `REPLACE_WITH_*` values in [`apphosting.yaml`](apphosting.yaml). Store the app role password as a secret:
+   `firebase apphosting:secrets:set sprintboard-db-pass --project prod`
 4. `firebase apphosting:backends:create --project prod`. Connect this GitHub repo, root `/`, and pick the live branch. Each push to that branch rolls out.
-5. Add the backend domain (`<backend>--<project>.<region>.hosted.app`) under **Authentication → Settings → Authorized domains**.
+5. Let the backend reach Cloud SQL:
+   `gcloud projects add-iam-policy-binding <project> --member=serviceAccount:firebase-app-hosting-compute@<project>.iam.gserviceaccount.com --role=roles/cloudsql.client`
+6. Add the backend domain (`<backend>--<project>.<region>.hosted.app`) under **Authentication → Settings → Authorized domains**.
 
 On App Hosting, `firebase-admin` uses the backend's default credentials, so `FIREBASE_SERVICE_ACCOUNT` isn't needed. Don't set any emulator variables in production.
 
