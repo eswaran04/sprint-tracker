@@ -12,6 +12,7 @@ import { listPublicSheets } from "@/lib/api";
 import { MAANG } from "@/lib/companies";
 import { filterSheets, type SheetSort } from "@/lib/sheets";
 import { cn } from "@/lib/utils";
+import { RecommendedSheets } from "./recommended-sheets";
 import { SheetCard } from "./sheet-card";
 
 const SORT_LABELS: Record<SheetSort, string> = { newest: "Newest", popular: "Most copied", shortest: "Shortest", largest: "Most problems" };
@@ -29,6 +30,8 @@ export function ExploreGallery() {
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight"><Compass className="size-6 text-primary" /> Explore sheets</h1>
         <p className="mt-1 text-sm text-muted-foreground">Prep sheets shared by the community. Copy one to start your own sprint.</p>
       </div>
+
+      <RecommendedSheets />
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1 sm:max-w-sm">

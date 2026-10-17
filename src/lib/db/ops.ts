@@ -159,6 +159,16 @@ export const ops = {
 
   copyPublicSheet: op(z.object({ id }), (db, { id }) => scalar(db, "select public.copy_public_sheet($1) as v", [id])),
 
+  /** Nearest public sheets by embedding (empty until the sheet has been embedded). */
+  similarSheets: op(z.object({ id, k: z.number().int().min(1).max(24).default(6) }), (db, { id, k }) =>
+    all(db, "select * from public.similar_sheets($1, $2)", [id, k]),
+  ),
+
+  /** Public sheets closest to the caller's saved goal (empty without a goal). */
+  recommendedSheets: op(z.object({ k: z.number().int().min(1).max(24).default(6) }).strict(), (db, { k }) =>
+    all(db, "select * from public.recommended_sheets($1)", [k]),
+  ),
+
   listMyGroups: op(none, (db) => all(db, "select * from public.my_groups()")),
 
   getGroup: op(z.object({ id }), async (db, { id }) => {
