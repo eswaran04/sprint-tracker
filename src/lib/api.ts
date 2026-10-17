@@ -1,15 +1,19 @@
-import { supabaseBrowser } from "@/lib/supabase/client";
 import type {
   Group, GroupActivityRow, GroupMember, GroupPreview, GroupProgressRow, GroupReaction, MyGroup, MyNudge, Problem, ProblemInput, PublicProblem,
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
 
-const db = () => supabaseBrowser();
-const PAGE = 1000; // PostgREST default max rows
-
-function unwrap<T>({ data, error }: { data: T | null; error: { message: string } | null }): T {
-  if (error) throw new Error(error.message);
-  return data as T;
+/** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
+async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+  const res = await fetch(`/api/rpc/${fn}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(args),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as T;
 }
 
 export type ProblemPatch = Partial<Pick<Problem, "done_at" | "starred" | "notes" | "day_no" | "sprint_no">>;
@@ -26,168 +30,100 @@ export interface SprintSummary extends Sprint {
   done: number;
 }
 
-export async function listSprints(): Promise<SprintSummary[]> {
-  const sprints = unwrap(await db().from("sprints").select("*").order("created_at", { ascending: false })) as Sprint[];
-  const counts = await Promise.all(
-    sprints.map(async (s) => {
-      const [total, done] = await Promise.all([
-        db().from("problems").select("id", { count: "exact", head: true }).eq("sprint_id", s.id),
-        db().from("problems").select("id", { count: "exact", head: true }).eq("sprint_id", s.id).not("done_at", "is", null),
-      ]);
-      return { total: total.count ?? 0, done: done.count ?? 0 };
-    }),
-  );
-  return sprints.map((s, i) => ({ ...s, ...counts[i] }));
-}
+export const listSprints = () => rpc<SprintSummary[]>("listSprints");
 
-export async function getSprint(id: string): Promise<{ sprint: Sprint; problems: Problem[] }> {
-  const sprint = unwrap(await db().from("sprints").select("*").eq("id", id).single()) as Sprint;
-  const problems: Problem[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const page = unwrap(
-      await db().from("problems").select("*").eq("sprint_id", id).order("position").range(from, from + PAGE - 1),
-    ) as Problem[];
-    problems.push(...page);
-    if (page.length < PAGE) break;
-  }
-  return { sprint, problems };
-}
+export const getSprint = (id: string) => rpc<{ sprint: Sprint; problems: Problem[] }>("getSprint", { id });
 
-export async function createSprint(input: { title: string; start_date: string | null; skip_weekends: boolean }, rows: ProblemInput[]) {
-  const sprint = unwrap(await db().from("sprints").insert(input).select().single()) as Sprint;
-  try {
-    for (let i = 0; i < rows.length; i += 500) {
-      const chunk = rows.slice(i, i + 500).map((r) => ({ ...r, sprint_id: sprint.id, original_day_no: r.day_no, original_sprint_no: r.sprint_no }));
-      unwrap(await db().from("problems").insert(chunk));
-    }
-  } catch (e) {
-    await db().from("sprints").delete().eq("id", sprint.id);
-    throw e;
-  }
-  return sprint;
-}
+export const createSprint = (input: { title: string; start_date: string | null; skip_weekends: boolean }, rows: ProblemInput[]) =>
+  rpc<Sprint>("createSprint", { input, rows });
 
 export async function updateSprint(id: string, patch: SprintPatch) {
-  unwrap(await db().from("sprints").update(patch).eq("id", id));
+  await rpc("updateSprint", { id, patch });
 }
 
 export async function deleteSprint(id: string) {
-  unwrap(await db().from("sprints").delete().eq("id", id));
+  await rpc("deleteSprint", { id });
 }
 
 export async function updateProblem(id: string, patch: ProblemPatch) {
-  unwrap(await db().from("problems").update(patch).eq("id", id));
+  await rpc("updateProblem", { id, patch });
 }
 
 export async function reschedule(changes: DayChange[]) {
-  if (changes.length) unwrap(await db().rpc("reschedule_problems", { changes }));
+  if (changes.length) await rpc("reschedule", { changes });
 }
 
-export async function listSavedFilters(): Promise<SavedFilter[]> {
-  return unwrap(await db().from("saved_filters").select("*").order("created_at")) as SavedFilter[];
-}
+export const listSavedFilters = () => rpc<SavedFilter[]>("listSavedFilters");
 
-export async function createSavedFilter(name: string, query: Record<string, unknown>) {
-  return unwrap(await db().from("saved_filters").insert({ name, query }).select().single()) as SavedFilter;
-}
+export const createSavedFilter = (name: string, query: Record<string, unknown>) => rpc<SavedFilter>("createSavedFilter", { name, query });
 
 export async function deleteSavedFilter(id: string) {
-  unwrap(await db().from("saved_filters").delete().eq("id", id));
+  await rpc("deleteSavedFilter", { id });
 }
 
-export async function listPublicSheets(): Promise<PublicSheet[]> {
-  return unwrap(await db().from("public_sheets").select("*").order("published_at", { ascending: false }).limit(500)) as PublicSheet[];
-}
+export const listPublicSheets = () => rpc<PublicSheet[]>("listPublicSheets");
 
 /** Public catalogue for one sheet, or null if it doesn't exist / isn't public. */
-export async function getPublicSheet(id: string): Promise<{ sheet: PublicSheet; problems: PublicProblem[] } | null> {
-  const sheet = unwrap(await db().from("public_sheets").select("*").eq("id", id).maybeSingle()) as PublicSheet | null;
-  if (!sheet) return null;
-  const problems: PublicProblem[] = [];
-  for (let from = 0; ; from += PAGE) {
-    const page = unwrap(
-      await db().from("public_sheet_problems").select("*").eq("sprint_id", id).order("position").range(from, from + PAGE - 1),
-    ) as PublicProblem[];
-    problems.push(...page);
-    if (page.length < PAGE) break;
-  }
-  return { sheet, problems };
-}
+export const getPublicSheet = (id: string) => rpc<{ sheet: PublicSheet; problems: PublicProblem[] } | null>("getPublicSheet", { id });
 
 /** Copies a public sheet into the caller's account; returns the new sprint id. */
-export async function copyPublicSheet(id: string): Promise<string> {
-  return unwrap(await db().rpc("copy_public_sheet", { src: id })) as string;
-}
+export const copyPublicSheet = (id: string) => rpc<string>("copyPublicSheet", { id });
 
-export async function listMyGroups(): Promise<MyGroup[]> {
-  return unwrap(await db().rpc("my_groups")) as MyGroup[];
-}
+export const listMyGroups = () => rpc<MyGroup[]>("listMyGroups");
 
 /** Group + roster, or null when you're not a member (RLS hides it). */
-export async function getGroup(id: string): Promise<{ group: Group; members: GroupMember[] } | null> {
-  const group = unwrap(await db().from("groups").select("*").eq("id", id).maybeSingle()) as Group | null;
-  if (!group) return null;
-  const members = unwrap(await db().from("group_members").select("*").eq("group_id", id).order("joined_at")) as GroupMember[];
-  return { group, members };
-}
+export const getGroup = (id: string) => rpc<{ group: Group; members: GroupMember[] } | null>("getGroup", { id });
 
-export async function groupPreview(code: string): Promise<GroupPreview | null> {
-  const rows = unwrap(await db().rpc("group_preview", { p_code: code })) as GroupPreview[];
-  return rows[0] ?? null;
-}
+export const groupPreview = (code: string) => rpc<GroupPreview | null>("groupPreview", { code });
 
-export async function createGroup(sprintId: string, name: string, me: { name: string; avatar: string | null }): Promise<string> {
-  return unwrap(
-    await db().rpc("create_group", { p_sprint: sprintId, p_name: name, p_display_name: me.name, p_avatar: me.avatar }),
-  ) as string;
-}
+export const createGroup = (sprintId: string, name: string, me: { name: string; avatar: string | null }) =>
+  rpc<string>("createGroup", { sprintId, name, me });
 
 /** Joins via invite code; links `existingSprint` (a copy of the sheet) instead of copying when given. */
-export async function joinGroup(code: string, me: { name: string; avatar: string | null }, existingSprint?: string): Promise<string> {
-  return unwrap(
-    await db().rpc("join_group", { p_code: code, p_display_name: me.name, p_avatar: me.avatar, p_sprint: existingSprint ?? null }),
-  ) as string;
-}
+export const joinGroup = (code: string, me: { name: string; avatar: string | null }, existingSprint?: string) =>
+  rpc<string>("joinGroup", { code, me, existingSprint: existingSprint ?? null });
 
-export async function groupProgress(groupId: string): Promise<GroupProgressRow[]> {
-  return unwrap(await db().rpc("group_progress", { p_group: groupId })) as GroupProgressRow[];
-}
+export const groupProgress = (groupId: string) => rpc<GroupProgressRow[]>("groupProgress", { groupId });
 
 /** What members completed in the last week: names and times only. */
-export async function groupActivity(groupId: string): Promise<GroupActivityRow[]> {
-  return unwrap(await db().rpc("group_activity", { p_group: groupId })) as GroupActivityRow[];
-}
+export const groupActivity = (groupId: string) => rpc<GroupActivityRow[]>("groupActivity", { groupId });
 
-export async function groupReactions(groupId: string, sinceDay: string): Promise<GroupReaction[]> {
-  const q = db().from("group_reactions").select("group_id, target_user, day, reactor").eq("group_id", groupId).gte("day", sinceDay);
-  return unwrap(await q) as GroupReaction[];
-}
+export const groupReactions = (groupId: string, sinceDay: string) => rpc<GroupReaction[]>("groupReactions", { groupId, sinceDay });
 
 /** Clap for a member's day, or take the clap back. */
 export async function toggleReaction(groupId: string, targetUser: string, day: string) {
-  unwrap(await db().rpc("toggle_reaction", { p_group: groupId, p_target: targetUser, p_day: day }));
+  await rpc("toggleReaction", { groupId, targetUser, day });
 }
 
 export async function sendNudge(groupId: string, targetUser: string) {
-  unwrap(await db().rpc("send_nudge", { p_group: groupId, p_target: targetUser }));
+  await rpc("sendNudge", { groupId, targetUser });
 }
 
-export async function myNudges(): Promise<MyNudge[]> {
-  return unwrap(await db().rpc("my_nudges")) as MyNudge[];
-}
+export const myNudges = () => rpc<MyNudge[]>("myNudges");
 
 export async function markNudgesSeen() {
-  unwrap(await db().rpc("mark_nudges_seen"));
+  await rpc("markNudgesSeen");
 }
 
 export async function leaveGroup(groupId: string) {
-  unwrap(await db().rpc("leave_group", { p_group: groupId }));
+  await rpc("leaveGroup", { groupId });
 }
 
 export async function removeMember(groupId: string, userId: string) {
-  unwrap(await db().rpc("remove_member", { p_group: groupId, p_user: userId }));
+  await rpc("removeMember", { groupId, userId });
 }
 
 export async function deleteGroup(groupId: string) {
-  unwrap(await db().rpc("delete_group", { p_group: groupId }));
+  await rpc("deleteGroup", { groupId });
+}
+
+/** Saves the theme accent on your account. */
+export async function saveAccent(accent: string) {
+  const res = await fetch("/api/me", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ accent }),
+  });
+  if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Request failed");
 }
