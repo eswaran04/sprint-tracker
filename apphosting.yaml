@@ -8,8 +8,10 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
     value: AIzaSyCvZPUf842IwnycFCu-HOIt4QwuzrJ34Fc
     availability: [BUILD, RUNTIME]
+  # The app's own domain: /__/auth/* is proxied to firebaseapp.com (next.config.ts) so sign-in works on iOS Safari.
+  # Its /__/auth/handler must be an authorized redirect URI on the OAuth web client.
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: sprint-tracker-126ab.firebaseapp.com
+    value: sprintboard--sprint-tracker-126ab.asia-southeast1.hosted.app
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: sprint-tracker-126ab
