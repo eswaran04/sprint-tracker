@@ -29,3 +29,18 @@ env:
     secret: sprintboard-db-pass
   - variable: DATABASE_POOL_MAX
     value: "3"
+
+  # Vertex AI via Application Default Credentials (the runtime service account), so none of these are secrets.
+  # "global" is used because asia-southeast1 may not serve every model below.
+  - variable: GOOGLE_CLOUD_PROJECT
+    value: sprint-tracker-126ab
+  - variable: GOOGLE_CLOUD_LOCATION
+    value: global
+  - variable: AI_FILTERS_MODEL
+    value: gemini-2.5-flash-lite
+  # Alternative embedding model: text-embedding-005 (fixed 768 dims, no size setting needed).
+  - variable: AI_EMBED_MODEL
+    value: gemini-embedding-001
+  # gemini-embedding-001 defaults to 3072 dims; request 768 via outputDimensionality.
+  - variable: AI_EMBED_DIMENSIONS
+    value: "768"

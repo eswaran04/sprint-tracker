@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { format, subDays } from "date-fns";
 import { mkProblem, mkSprint } from "@/test/fixtures/problems";
 import { renderWithProviders } from "@/test/render";
+import { Toaster } from "sonner";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -25,6 +26,7 @@ const api = vi.hoisted(() => ({
   getGroup: vi.fn(),
   groupProgress: vi.fn(async () => [] as unknown[]),
   createGroup: vi.fn(),
+  aiFilters: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -182,5 +184,22 @@ describe("SprintView", () => {
     await user.keyboard("jjj");
     expect(await screen.findByText("Two Sum")).toBeInTheDocument();
     expect(await dayHeader(3)).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("filters with AI from the search box and can undo", async () => {
+    const user = userEvent.setup();
+    api.aiFilters.mockResolvedValue({ q: "", status: "todo", companies: ["Amazon"], topics: [], subjects: [], difficulties: [] });
+    renderWithProviders(<><SprintView id="s1" /><Toaster /></>);
+    await screen.findByRole("heading", { name: "DSA Prep" });
+
+    await user.click(screen.getByRole("button", { name: "Filter with AI" }));
+    await user.type(screen.getByRole("textbox", { name: "Describe what you want to see" }), "amazon problems I haven't done{Enter}");
+
+    await waitFor(() => expect(api.aiFilters).toHaveBeenCalledWith("amazon problems I haven't done", expect.objectContaining({ companies: expect.arrayContaining(["Amazon", "Google", "Zoho"]) })));
+    expect(await screen.findByText("2 matches")).toBeInTheDocument();
+    expect(screen.getByText("Interpreted as: Amazon · To do")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(screen.queryByText("2 matches")).not.toBeInTheDocument());
   });
 });

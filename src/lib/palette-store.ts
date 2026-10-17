@@ -5,6 +5,8 @@ export interface PaletteContext {
   problems: Problem[];
   onSelectProblem: (p: Problem) => void;
   actions: { id: string; label: string; shortcut?: string; run: () => void }[];
+  /** When set, ⌘K offers "Filter with AI" for sentence-like input. */
+  aiFilter?: (text: string) => Promise<void>;
 }
 
 let state: PaletteContext | null = null;
