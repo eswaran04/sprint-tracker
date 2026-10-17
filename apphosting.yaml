@@ -6,18 +6,18 @@ runConfig:
 
 env:
   - variable: NEXT_PUBLIC_FIREBASE_API_KEY
-    value: REPLACE_WITH_API_KEY
+    value: AIzaSyCvZPUf842IwnycFCu-HOIt4QwuzrJ34Fc
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-    value: REPLACE_WITH_PROJECT_ID.firebaseapp.com
+    value: sprint-tracker-126ab.firebaseapp.com
     availability: [BUILD, RUNTIME]
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
-    value: REPLACE_WITH_PROJECT_ID
+    value: sprint-tracker-126ab
     availability: [BUILD, RUNTIME]
 
   # Cloud SQL Postgres via the Cloud SQL connector (src/lib/db/pool.ts). Instance: "project:region:instance".
   - variable: CLOUD_SQL_INSTANCE
-    value: REPLACE_WITH_PROJECT_ID:REPLACE_WITH_REGION:sprintboard
+    value: sprint-tracker-126ab:asia-southeast1:sprint-tracker-126ab-instance
   - variable: DB_USER
     value: sprintboard_app
   - variable: DB_NAME
