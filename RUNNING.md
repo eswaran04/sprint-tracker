@@ -38,20 +38,35 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 - `MIGRATION_DATABASE_URL` is the owner role, used only by migrations.
 - The emulator variables make auth use the local emulator instead of a real Firebase project.
 
-### Optional: AI filters (Gemini on Vertex AI)
+### Optional: AI features (Gemini on Vertex AI or Google AI Studio)
 
+The AI features (**AI filters**, **Analyze note** complexity/edge-case review, and **Describe your goal** sprint generator) run server-side.
+
+**Option A: Vertex AI (recommended, ADC credentials)**
 Add these to `.env.local`:
 
 ```env
 GOOGLE_CLOUD_PROJECT=sprint-tracker-126ab
 GOOGLE_CLOUD_LOCATION=global
 AI_FILTERS_MODEL=gemini-2.5-flash-lite
+AI_REVIEW_MODEL=gemini-2.5-flash-lite     # optional, "Analyze note"
+AI_GENERATE_MODEL=gemini-2.5-flash-lite   # optional, "Describe your goal"
 AI_ENABLED=true
 ```
 
-Then sign in once with `gcloud auth application-default login`. Your account needs `roles/aiplatform.user` on the project. Without credentials, set `AI_ENABLED=false` (or leave out `GOOGLE_CLOUD_PROJECT`). The ✨ toggle still shows, but requests get a "not available" message. CI uses this setting.
+Then sign in once with `gcloud auth application-default login`. Your account needs `roles/aiplatform.user` on the project.
 
-To check prompt accuracy against the live model (this is not part of CI), run `npm run test:ai`.
+**Option B: Gemini API Key (Google AI Studio)**
+Alternatively, you can provide an API key directly in `.env.local`:
+
+```env
+GEMINI_API_KEY=AIzaSy...
+AI_ENABLED=true
+```
+
+Without credentials or when `AI_ENABLED=false` (or leaving out both project and key), the ✨ toggle shows a "not available" message, while **Analyze note** and **Describe your goal** safely fall back to their built-in offline analyzer and planner. CI uses this offline setting.
+
+To test prompt accuracy and review generation against the live model (not part of CI), run `npm run test:ai`.
 
 ### Optional: Similar sheets and goal recommendations (pgvector + Vertex embeddings)
 
@@ -139,6 +154,7 @@ Open <http://localhost:3000> and sign in with Google. The emulator shows a fake 
 ```bash
 npm test            # unit and component tests
 npm run test:db     # RLS / SQL integration tests (needs Postgres)
+npm run test:ai     # live Gemini / Vertex AI eval tests
 npm run typecheck
 npm run lint
 ```
@@ -153,6 +169,7 @@ npm run lint
 | Emulator fails to start | Check `java -version`; install JDK 17+. |
 | Sign-in fails or hangs | Confirm the emulator is running and both emulator env vars are set; restart `npm run dev` after editing `.env.local`. |
 | Port already in use | Stop the other process or change ports in `firebase.json` / `next dev -p <port>`. |
+| `Built-in analyzer (AI unavailable)` | Ensure `.env.local` has `GOOGLE_CLOUD_PROJECT` (and you ran `gcloud auth application-default login`) or `GEMINI_API_KEY`, and `AI_ENABLED=true`. Restart `npm run dev`. |
 
 ## Production
 

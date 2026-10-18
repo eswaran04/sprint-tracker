@@ -3,6 +3,8 @@ import type {
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
 import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
+import type { GenerateResponse } from "@/lib/generate/schema";
+import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -35,8 +37,16 @@ export const listSprints = () => rpc<SprintSummary[]>("listSprints");
 
 export const getSprint = (id: string) => rpc<{ sprint: Sprint; problems: Problem[] }>("getSprint", { id });
 
-export const createSprint = (input: { title: string; start_date: string | null; skip_weekends: boolean }, rows: ProblemInput[]) =>
-  rpc<Sprint>("createSprint", { input, rows });
+export const createSprint = (
+  input: { title: string; start_date: string | null; skip_weekends: boolean; rest_days?: string[] },
+  rows: ProblemInput[],
+) => rpc<Sprint>("createSprint", { input, rows });
+
+/**
+ * Builds (but does not save) a sprint plan from a natural-language goal (Gemini on Vertex AI, server-side).
+ * The server falls back to a built-in planner when AI is off or fails (`ai: false`).
+ */
+export const generateSprint = (args: { prompt: string; today: string }) => postAi<GenerateResponse>("/api/ai/generate", args);
 
 export async function updateSprint(id: string, patch: SprintPatch) {
   await rpc("updateSprint", { id, patch });
@@ -151,16 +161,30 @@ export async function deleteGroup(groupId: string) {
 }
 
 /** Interprets a typed sentence as filters for the current sheet (Gemini on Vertex AI). Only facet names are sent. */
-export async function aiFilters(text: string, facets: FacetNames): Promise<AiFilters> {
-  const res = await fetch("/api/ai/filters", {
+export const aiFilters = (text: string, facets: FacetNames) => postAi<AiFilters>("/api/ai/filters", { text, facets });
+
+/**
+ * AI review of a problem's notes (complexity, edge cases, missing tags) via Gemini on Vertex AI, server-side.
+ * The server falls back to the built-in analyzer when AI is off or fails (`ai: false`). `signal` cancels the request.
+ */
+export async function analyzeNote(problem: ReviewProblem, notes: string, signal?: AbortSignal): Promise<ReviewResponse> {
+  if (!notes.trim()) throw new Error("Write your approach or paste your code first.");
+  if (notes.length > MAX_NOTES) throw new Error("This note is too long to analyze.");
+  return postAi<ReviewResponse>("/api/ai/review", { problem, notes }, signal);
+}
+
+/** POSTs JSON to an `/api/ai/*` route and unwraps `{ data }`. Throws with the server's message. */
+async function postAi<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ text, facets }),
+    body: JSON.stringify(payload),
+    signal,
   });
-  const body = (await res.json().catch(() => ({}))) as { data?: AiFilters; error?: string };
+  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
   if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
-  return body.data as AiFilters;
+  return body.data as T;
 }
 
 /** Saves the theme accent on your account. */
