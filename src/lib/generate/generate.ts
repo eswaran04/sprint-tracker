@@ -2,8 +2,18 @@ import { addDays, format, isWeekend, parseISO } from "date-fns";
 import { assemble } from "./assemble";
 import { computeCapacity } from "./capacity";
 import { matchVocabulary, rank, shortlist, toCandidates, vocabularies, type CatalogueProblem } from "./catalogue";
-import { heuristicGoal } from "./heuristic";
-import { GoalSchema, PlanSchema, type GenerateResponse, type Goal, type Plan } from "./schema";
+import { applyAnswers, buildQuestions } from "./clarify";
+import { heuristicGoalDraft, unstatedFields } from "./heuristic";
+import {
+  GoalDraftSchema,
+  PlanSchema,
+  type ClarifiableField,
+  type GenerateRequest,
+  type GenerateResponse,
+  type GenerateResult,
+  type Goal,
+  type Plan,
+} from "./schema";
 import { GOAL_SYSTEM, goalUser, PLAN_SYSTEM, planUser } from "./prompts";
 
 export class GenerateError extends Error {
@@ -38,30 +48,80 @@ function normaliseMix(goal: Goal): Goal {
   return { ...goal, difficulty_mix: mix };
 }
 
-export async function generateSprintPlan(prompt: string, today: string, deps: GenerateDeps): Promise<GenerateResponse> {
-  const log = deps.log ?? (() => {});
-  const warnings: string[] = [];
-  let ai = Boolean(deps.llm);
+/** Defaults the goal parser uses when a setting isn't stated (see `GOAL_SYSTEM` / `heuristicGoal`). */
+const DEFAULTS: Partial<Record<ClarifiableField, unknown>> = { weeks: 4, hours_per_day: 2, skip_weekends: false };
 
-  // 1) Goal: LLM, falling back to heuristics.
-  let goal: Goal;
+/**
+ * Parses the prompt into a goal plus the settings the user left out. The model's `unspecified` list is backed up
+ * by wording checks for weeks / hours / weekends, but only where the model's value is still the default — so a
+ * phrasing the regexes miss ("by end of November") doesn't trigger a question the model already answered.
+ */
+async function parseGoal(prompt: string, today: string, deps: GenerateDeps, log: NonNullable<GenerateDeps["log"]>) {
   if (deps.llm) {
     try {
-      goal = await deps.llm({ system: GOAL_SYSTEM, user: goalUser(prompt, today), schema: GoalSchema });
+      const draft = await deps.llm({ system: GOAL_SYSTEM, user: goalUser(prompt, today), schema: GoalDraftSchema });
+      const unstated = unstatedFields(prompt);
+      const unspecified = new Set(draft.unspecified);
+      for (const f of unstated) if (f in DEFAULTS && draft.goal[f as keyof Goal] === DEFAULTS[f]) unspecified.add(f);
+      // The model over-reports: drop settings the wording clearly states or the parsed goal already fills.
+      for (const f of [...unspecified]) {
+        const stated =
+          (f in DEFAULTS && !unstated.includes(f)) ||
+          (f === "company" && draft.goal.company !== null) ||
+          (f === "weak_topics" && (draft.goal.weak_topics.length > 0 || draft.goal.focus_topics.length > 0));
+        if (stated) unspecified.delete(f);
+      }
+      return { goal: draft.goal, unspecified: [...unspecified], ai: true };
     } catch (e) {
       log("goal parsing failed, using heuristics", e);
-      goal = heuristicGoal(prompt, today);
-      ai = false;
+      return { ...heuristicGoalDraft(prompt, today), ai: false };
     }
-  } else {
-    goal = heuristicGoal(prompt, today);
   }
-  goal = normaliseMix(goal);
+  return { ...heuristicGoalDraft(prompt, today), ai: false };
+}
 
-  // 2) Catalogue.
+/**
+ * Turns a goal description into either clarifying questions (`kind: "questions"`) or a sprint plan (`kind: "plan"`).
+ *
+ * Round one sends `{ prompt, today }`. If the description leaves out settings that matter, the response carries
+ * up to three catalogue-backed questions plus the parsed goal. Round two sends that goal back with `answers`
+ * (or `skip_questions: true`), which skips goal parsing and always yields a plan.
+ */
+export async function generateSprintPlan(req: GenerateRequest, deps: GenerateDeps): Promise<GenerateResult> {
+  const log = deps.log ?? (() => {});
+  const { prompt, today } = req;
+
+  // 1) Catalogue (needed for question options as well as planning).
   const catalogue = await deps.loadCatalogue();
   if (!catalogue.length) throw new GenerateError("There are no public sheets to build from yet. Publish a sheet or import one instead.");
   const vocab = vocabularies(catalogue);
+
+  // 2) Goal: the one sent back from round one, else parse the prompt (LLM, falling back to heuristics).
+  const parsed = req.goal ? { goal: req.goal, unspecified: [] as ClarifiableField[], ai: Boolean(deps.llm) } : await parseGoal(prompt, today, deps, log);
+  const goal = normaliseMix(applyAnswers(parsed.goal, req.answers, vocab));
+
+  // 3) Ask before planning when settings are missing — first round only.
+  if (!req.goal && !req.answers && !req.skip_questions) {
+    const unknownCompany = goal.company && !matchVocabulary([goal.company], vocab.companies).matched.length ? goal.company : null;
+    const questions = buildQuestions({ goal, unspecified: parsed.unspecified, catalogue, unknownCompany });
+    if (questions.length) return { kind: "questions", goal, questions, ai: parsed.ai };
+  }
+
+  const plan = await planFromGoal(goal, today, catalogue, vocab, parsed.ai, deps, log);
+  return { kind: "plan", ...plan };
+}
+
+async function planFromGoal(
+  goal: Goal,
+  today: string,
+  catalogue: CatalogueProblem[],
+  vocab: ReturnType<typeof vocabularies>,
+  goalByAi: boolean,
+  deps: GenerateDeps,
+  log: NonNullable<GenerateDeps["log"]>,
+): Promise<GenerateResponse> {
+  const warnings: string[] = [];
+  let ai = Boolean(deps.llm) && goalByAi;
 
   const company = goal.company ? matchVocabulary([goal.company], vocab.companies) : { matched: [], unknown: [] };
   const weak = matchVocabulary(goal.weak_topics, vocab.topics);

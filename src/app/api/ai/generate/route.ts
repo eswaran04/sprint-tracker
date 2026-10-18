@@ -18,7 +18,8 @@ const fail = (error: string, status: number) => NextResponse.json({ error }, { s
 const log = (msg: string, e?: unknown) => console.warn(`[ai:generate] ${msg}`, e instanceof Error ? e.message : (e ?? ""));
 
 /**
- * POST { prompt, today } → { data: GenerateResponse }: a sprint plan (not saved) built from public sheets.
+ * POST { prompt, today, goal?, answers?, skip_questions? } → { data: GenerateResult }: either clarifying questions
+ * (`kind: "questions"`) or a sprint plan (`kind: "plan"`, not saved) built from public sheets.
  * Gemini on Vertex AI when enabled; the built-in planner covers AI being off or failing (`ai: false`).
  */
 export async function POST(request: NextRequest) {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (isAiEnabled() && !limiter.take(user.uid)) return fail("Too many requests. Try again in a minute.", 429);
 
   try {
-    const data = await generateSprintPlan(parsed.data.prompt, parsed.data.today, {
+    const data = await generateSprintPlan(parsed.data, {
       loadCatalogue: () => withUser(user.uid, async (db) => dedupe(await loadCatalogueRows(db))),
       llm: vertexLlm(generateModel(), TIMEOUT_MS),
       log,

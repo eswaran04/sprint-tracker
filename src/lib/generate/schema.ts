@@ -49,10 +49,54 @@ export const PlanSchema = z
   .strict();
 export type Plan = z.infer<typeof PlanSchema>;
 
+/** Goal settings the generator may ask the user about when the description leaves them out (priority order). */
+export const CLARIFIABLE = ["weeks", "hours_per_day", "company", "weak_topics", "skip_weekends"] as const;
+export const ClarifiableField = z.enum(CLARIFIABLE);
+export type ClarifiableField = z.infer<typeof ClarifiableField>;
+
+/** What the goal-parsing model call returns: the settings plus which of them were defaulted, not stated. */
+export const GoalDraftSchema = z
+  .object({
+    goal: GoalSchema,
+    unspecified: z.array(ClarifiableField).max(CLARIFIABLE.length),
+  })
+  .strict();
+export type GoalDraft = z.infer<typeof GoalDraftSchema>;
+
+/** The user's answers to clarifying questions. Topic/company values are re-matched against the catalogue. */
+export const AnswersSchema = z
+  .object({
+    weeks: z.number().int().min(1).max(52).optional(),
+    hours_per_day: z.number().min(0.5).max(12).optional(),
+    company: z.string().trim().max(100).nullable().optional(),
+    weak_topics: z.array(z.string().trim().max(100)).max(20).optional(),
+    skip_weekends: z.boolean().optional(),
+  })
+  .strict();
+export type Answers = z.infer<typeof AnswersSchema>;
+
+/** A clarifying question. Prompts and options are written by the server from the catalogue, never by the model. */
+export interface Question {
+  field: ClarifiableField;
+  prompt: string;
+  kind: "number" | "single" | "multi" | "boolean";
+  options?: string[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  default: number | string | string[] | boolean | null;
+}
+
 export const GenerateRequest = z
   .object({
     prompt: z.string().trim().min(3).max(1000),
     today: isoDate,
+    /** Goal parsed in the first round, sent back with the answers so it isn't parsed again. */
+    goal: GoalSchema.optional(),
+    answers: AnswersSchema.optional(),
+    /** Build the plan with defaults instead of asking questions. */
+    skip_questions: z.boolean().optional(),
   })
   .strict();
 export type GenerateRequest = z.infer<typeof GenerateRequest>;
@@ -75,3 +119,13 @@ export interface GenerateResponse {
   /** True when the AI planner produced the plan; false when the built-in planner did. */
   ai: boolean;
 }
+
+export interface QuestionsResponse {
+  kind: "questions";
+  /** The goal as understood so far; send it back with the answers. */
+  goal: Goal;
+  questions: Question[];
+  ai: boolean;
+}
+
+export type GenerateResult = QuestionsResponse | ({ kind: "plan" } & GenerateResponse);

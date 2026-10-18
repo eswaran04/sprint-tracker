@@ -174,6 +174,19 @@ export const ops = {
     all(db, "select * from public.recommended_sheets($1)", [k]),
   ),
 
+  /** The caller's readiness report for one sprint, or null (RLS: owner only). */
+  getMyShareReport: op(z.object({ id }), (db, { id }) =>
+    one(
+      db,
+      `select slug, sprint_id, title, readiness, scout, stats, to_json(updated_at) #>> '{}' as updated_at
+         from public.share_reports where sprint_id = $1`,
+      [id],
+    ),
+  ),
+
+  /** Copies a shared sprint (by share slug) into the caller's account; idempotent. Returns the sprint id. */
+  cloneSharedSprint: op(z.object({ slug: str(64) }), (db, { slug }) => scalar(db, "select public.clone_shared_sprint($1) as v", [slug])),
+
   listMyGroups: op(none, (db) => all(db, "select * from public.my_groups()")),
 
   getGroup: op(z.object({ id }), async (db, { id }) => {

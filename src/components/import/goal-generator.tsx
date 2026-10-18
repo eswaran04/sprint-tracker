@@ -9,7 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Tag } from "@/components/sprint/chips";
 import { generateSprint } from "@/lib/api";
-import type { GenerateResponse } from "@/lib/generate/schema";
+import type { Answers, GenerateResponse, GenerateResult, Goal } from "@/lib/generate/schema";
+import { ClarifyQuestions } from "./clarify-questions";
 import { SprintPreview } from "./sprint-preview";
 
 const MAX = 1000;
@@ -20,22 +21,36 @@ export const EXAMPLES = [
   "Brush up on DSA over 8 weeks, 1 hour/day weekdays only, struggling with recursion.",
 ];
 
+type Clarify = Extract<GenerateResult, { kind: "questions" }>;
+/** Goal + answers from the clarification round, reused by "Regenerate" while the prompt is unchanged. */
+type Followup = { prompt: string; goal: Goal; answers?: Answers; skip_questions?: boolean };
+
 export function GoalGenerator() {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [clarify, setClarify] = useState<Clarify | null>(null);
+  const [followup, setFollowup] = useState<Followup | null>(null);
   const [runId, setRunId] = useState(0);
 
-  async function generate() {
+  async function run(extra: Omit<Followup, "prompt"> | null) {
     const p = prompt.trim();
     if (p.length < 3 || loading) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await generateSprint({ prompt: p, today: format(new Date(), "yyyy-MM-dd") });
-      setResult(data);
-      setRunId((n) => n + 1);
+      const data = await generateSprint({ prompt: p, today: format(new Date(), "yyyy-MM-dd"), ...extra });
+      if (data.kind === "questions") {
+        setClarify(data);
+        setResult(null);
+        setFollowup(null);
+      } else {
+        setResult(data);
+        setClarify(null);
+        setFollowup(extra ? { prompt: p, ...extra } : null);
+        setRunId((n) => n + 1);
+      }
     } catch (e) {
       setError((e as Error).message);
       toast.error("Couldn't build a sprint", { description: (e as Error).message });
@@ -43,6 +58,15 @@ export function GoalGenerator() {
       setLoading(false);
     }
   }
+
+  const generate = () => run(null);
+  /** Same prompt → keep the answers already given instead of asking again. */
+  const regenerate = () => {
+    if (followup && followup.prompt === prompt.trim()) {
+      return run({ goal: followup.goal, answers: followup.answers, skip_questions: followup.skip_questions });
+    }
+    return run(null);
+  };
 
   const goal = result?.goal;
   const themes = result ? Object.fromEntries(result.sprints.map((s) => [s.sprint_no, s.theme])) : undefined;
@@ -65,7 +89,10 @@ export function GoalGenerator() {
             maxLength={MAX}
             rows={3}
             placeholder={EXAMPLES[0]}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              setClarify(null);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
@@ -78,7 +105,10 @@ export function GoalGenerator() {
               <button
                 key={ex}
                 type="button"
-                onClick={() => setPrompt(ex)}
+                onClick={() => {
+                  setPrompt(ex);
+                  setClarify(null);
+                }}
                 className="max-w-full truncate rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
               >
                 {ex}
@@ -89,7 +119,7 @@ export function GoalGenerator() {
             <span className="text-xs text-muted-foreground tabular-nums">{prompt.length}/{MAX}</span>
             <div className="flex gap-2">
               {result && (
-                <Button type="button" variant="outline" onClick={() => generate()} disabled={!canSubmit}>
+                <Button type="button" variant="outline" onClick={() => regenerate()} disabled={!canSubmit}>
                   <RefreshCw /> Regenerate
                 </Button>
               )}
@@ -102,6 +132,17 @@ export function GoalGenerator() {
         </form>
         {error && !loading && <p className="text-sm text-destructive">{error}</p>}
       </section>
+
+      {clarify && (
+        <ClarifyQuestions
+          key={clarify.questions.map((q) => q.field).join()}
+          goal={clarify.goal}
+          questions={clarify.questions}
+          loading={loading}
+          onSubmit={(answers) => run({ goal: clarify.goal, answers })}
+          onSkip={() => run({ goal: clarify.goal, skip_questions: true })}
+        />
+      )}
 
       {loading && (
         <div className="grid gap-3" aria-live="polite">
