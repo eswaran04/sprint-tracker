@@ -1,9 +1,9 @@
 "use client";
 
-import { CheckCircle2, Sparkles, AlertCircle, ArrowRight } from "lucide-react";
+import { CheckCircle2, Sparkles, AlertCircle, ArrowRight, Users } from "lucide-react";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 
-export function TourPreview({ type }: { type: "generator" | "search" | "reschedule" | "warmup" | "review" }) {
+export function TourPreview({ type }: { type: "generator" | "search" | "reschedule" | "warmup" | "review" | "digest" }) {
   switch (type) {
     case "generator":
       return (
@@ -160,6 +160,43 @@ export function TourPreview({ type }: { type: "generator" | "search" | "reschedu
               Your binary search logic is clean. Watch out for integer overflow with large indices—prefer
               <code className="text-foreground mx-1 px-1 bg-muted rounded font-mono text-[10px]">left + (right - left) // 2</code>.
             </p>
+          </div>
+        </div>
+      );
+
+    case "digest":
+      return (
+        <div className="flex flex-col gap-2.5 rounded-xl border border-border/80 bg-background/60 p-3.5 text-xs shadow-sm backdrop-blur">
+          <div className="flex items-center justify-between border-b pb-2">
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
+              <AiSparkle className="size-3.5 text-[var(--ai-2)]" />
+              <span>This Week in Algo Squad</span>
+              <AiBadge label="AI Digest" />
+            </div>
+            <span className="text-[10px] text-muted-foreground font-mono">
+              28 solves · 7d
+            </span>
+          </div>
+
+          <div className="rounded-lg bg-muted/60 p-2 font-medium text-foreground/90 leading-snug">
+            &ldquo;Elena cleared NeetCode 150 &amp; group hit a new velocity record! 🚀&rdquo;
+          </div>
+
+          <div className="space-y-1.5 pt-0.5">
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-2">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-primary mb-1">
+                <Users className="size-3.5" />
+                <span>Pair-up Opportunity</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Marcus solved <strong className="text-foreground">LRU Cache</strong> (Medium), which is due on your sprint today. Reach out to compare solutions!
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between rounded bg-background/80 px-2 py-1 border border-border/60 text-[11px]">
+              <span className="text-muted-foreground">Your pace:</span>
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">On track (+4 streak days)</span>
+            </div>
           </div>
         </div>
       );

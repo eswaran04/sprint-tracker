@@ -1,12 +1,13 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, type Variants } from "motion/react";
 import { ArrowLeft, ArrowRight, Check, ExternalLink, Sparkles, X } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useId } from "react";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
 import { useSprints } from "@/hooks/use-sprints";
+import { useMyGroups } from "@/hooks/use-groups";
 import {
   closeAiTour,
   hasSeenAiTour,
@@ -16,10 +17,19 @@ import {
   setAiTourStep,
   useAiTourState,
 } from "@/lib/ai-tour-store";
-import type { Variants } from "motion/react";
+import { markFeatureSeen, type AiFeature } from "@/hooks/use-feature-seen";
 import { cn } from "@/lib/utils";
 import { AI_TOUR_STEPS } from "./ai-tour-data";
 import { TourPreview } from "./ai-tour-preview";
+
+const STEP_FEATURE_MAP: Record<string, AiFeature> = {
+  generator: "sheet-generator",
+  search: "ai-search",
+  reschedule: "smart-reschedule",
+  warmup: "daily-warmup",
+  review: "code-review",
+  digest: "group-digest",
+};
 
 const slideVariants: Variants = {
   enter: (direction: number) => ({
@@ -52,12 +62,17 @@ const slideVariants: Variants = {
 export function AiTourModal() {
   const { isOpen, step, direction } = useAiTourState();
   const { data: sprints } = useSprints();
+  const { data: groups } = useMyGroups();
   const path = usePathname();
   const router = useRouter();
   const titleId = useId();
 
   // Pick the sprint that is currently open, or the first sprint
   const activeSprintId = sprints?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? sprints?.[0]?.id;
+  const activeGroupId =
+    groups?.find((g) => path.startsWith(`/app/groups/${g.id}`))?.id ??
+    groups?.find((g) => g.sprint_id === activeSprintId)?.id ??
+    groups?.[0]?.id;
 
   // Auto-launch the tour for first-time visitors after a brief delay
   useEffect(() => {
@@ -93,7 +108,9 @@ export function AiTourModal() {
   const StepIcon = currentStepData.icon;
 
   const handleTryNow = () => {
-    const href = currentStepData.getHref(activeSprintId);
+    const feature = STEP_FEATURE_MAP[currentStepData.id];
+    if (feature) markFeatureSeen(feature);
+    const href = currentStepData.getHref(activeSprintId, activeGroupId);
     closeAiTour();
     router.push(href);
   };

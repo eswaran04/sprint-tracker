@@ -1,8 +1,10 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { AI_TOUR_STEPS } from "@/components/ai-tour/ai-tour-data";
 
 const TOUR_SEEN_KEY = "aibc:ai-tour-completed";
+const getMaxStep = () => Math.max(0, AI_TOUR_STEPS.length - 1);
 
 interface TourState {
   isOpen: boolean;
@@ -46,7 +48,7 @@ export function markAiTourSeen(): void {
 export function openAiTour(step = 0): void {
   state = {
     isOpen: true,
-    step: Math.max(0, Math.min(step, 4)),
+    step: Math.max(0, Math.min(step, getMaxStep())),
     direction: 1,
   };
   emit();
@@ -62,7 +64,7 @@ export function closeAiTour(): void {
 }
 
 export function nextAiTourStep(): void {
-  if (state.step < 4) {
+  if (state.step < getMaxStep()) {
     state = {
       ...state,
       step: state.step + 1,
@@ -86,7 +88,7 @@ export function prevAiTourStep(): void {
 }
 
 export function setAiTourStep(step: number): void {
-  const target = Math.max(0, Math.min(step, 4));
+  const target = Math.max(0, Math.min(step, getMaxStep()));
   if (target === state.step) return;
   state = {
     ...state,

@@ -29,17 +29,19 @@ const read = (f: AiFeature) => {
   }
 };
 
+export function markFeatureSeen(feature: AiFeature): void {
+  if (read(feature)) return;
+  try {
+    localStorage.setItem(key(feature), "1");
+  } catch {
+    return;
+  }
+  listeners.forEach((l) => l());
+}
+
 /** Whether the user has tried an AI feature yet — drives the "New" badges. Server render assumes seen (no flash). */
 export function useFeatureSeen(feature: AiFeature) {
   const seen = useSyncExternalStore(subscribe, () => read(feature), () => true);
-  const markSeen = useCallback(() => {
-    if (read(feature)) return;
-    try {
-      localStorage.setItem(key(feature), "1");
-    } catch {
-      return;
-    }
-    listeners.forEach((l) => l());
-  }, [feature]);
+  const markSeen = useCallback(() => markFeatureSeen(feature), [feature]);
   return [seen, markSeen] as const;
 }

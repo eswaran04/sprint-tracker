@@ -1,4 +1,4 @@
-import { Brain, CalendarSync, Code2, FileSpreadsheet, MessageSquareText, type LucideIcon } from "lucide-react";
+import { Brain, CalendarSync, Code2, FileSpreadsheet, MessageSquareText, Newspaper, type LucideIcon } from "lucide-react";
 
 export interface TourStep {
   id: string;
@@ -9,9 +9,9 @@ export interface TourStep {
   icon: LucideIcon;
   gradient: string;
   actionLabel: string;
-  getHref: (sprintId?: string) => string;
+  getHref: (sprintId?: string, groupId?: string) => string;
   features: string[];
-  previewType: "generator" | "search" | "reschedule" | "warmup" | "review";
+  previewType: "generator" | "search" | "reschedule" | "warmup" | "review" | "digest";
 }
 
 export const AI_TOUR_STEPS: TourStep[] = [
@@ -104,5 +104,23 @@ export const AI_TOUR_STEPS: TourStep[] = [
       "Actionable hints without spoiling optimal solutions",
     ],
     previewType: "review",
+  },
+  {
+    id: "digest",
+    badge: "Study Groups",
+    title: "Weekly Group Digest",
+    tagline: "AI peer progress summaries, milestones & pair-up recommendations",
+    description:
+      "Stay accountable and motivated with your study squad. Gemini analyzes weekly group activity, celebrates cleared milestones, and suggests peer pair-ups so you can practice tricky problems with teammates who already conquered them.",
+    icon: Newspaper,
+    gradient: "from-amber-500/20 via-orange-500/10 to-transparent",
+    actionLabel: "View Digest",
+    getHref: (_sprintId, groupId) => (groupId ? `/app/groups/${groupId}#weekly-digest` : "/app"),
+    features: [
+      "Celebrates weekly solve leaders and completed sprint milestones",
+      "Suggests smart peer pair-ups for problems due on your plan",
+      "Personalized standing insights and lightweight cheer nudges",
+    ],
+    previewType: "digest",
   },
 ];
