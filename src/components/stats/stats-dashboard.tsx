@@ -12,6 +12,7 @@ import { yearOptions } from "@/lib/calendar";
 import { formatSubject } from "@/lib/format";
 import { currentPlanDay } from "@/lib/schedule";
 import { breakdown, heatmap, streaks, summary, toLocalDate } from "@/lib/stats";
+import { ShareReportDialog } from "./share-report-dialog";
 import { ActivityStrip, BreakdownBars, Panel, Tile } from "./stats-parts";
 
 const chartConfig = { solved: { label: "Solved", color: "var(--primary)" } } satisfies ChartConfig;
@@ -59,11 +60,14 @@ export function StatsDashboard({ id }: { id: string }) {
 
   return (
     <div className="mx-auto grid max-w-5xl gap-5 p-4 sm:p-8">
-      <div>
-        <Link href={`/app/s/${id}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-3.5" /> {s.sprint.title}
-        </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Progress</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <Link href={`/app/s/${id}`} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="size-3.5" /> {s.sprint.title}
+          </Link>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Progress</h1>
+        </div>
+        <ShareReportDialog sprintId={id} title={s.sprint.title} />
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

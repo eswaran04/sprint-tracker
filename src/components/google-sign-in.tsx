@@ -59,7 +59,12 @@ let returningFromRedirect: boolean | undefined;
 const isReturningFromRedirect = () => (returningFromRedirect ??= hasRememberedNext());
 const noSubscribe = () => () => {};
 
-export function GoogleSignIn({ size = "lg" }: { size?: "lg" | "default" }) {
+export function GoogleSignIn({ size = "lg", next: nextProp, label = "Continue with Google" }: {
+  size?: "lg" | "default";
+  /** Where to land after sign-in; defaults to `?next=` (then /app). */
+  next?: string;
+  label?: string;
+}) {
   const [clicked, setClicked] = useState(false);
   const [redirectChecked, setRedirectChecked] = useState(false);
   // false on the server and during hydration, then the real value: no hydration mismatch.
@@ -81,7 +86,7 @@ export function GoogleSignIn({ size = "lg" }: { size?: "lg" | "default" }) {
 
   async function signIn() {
     setClicked(true);
-    const next = safeNextPath(params.get("next"));
+    const next = safeNextPath(nextProp ?? params.get("next"));
     try {
       const auth = firebaseAuth();
       const provider = new GoogleAuthProvider();
@@ -102,7 +107,7 @@ export function GoogleSignIn({ size = "lg" }: { size?: "lg" | "default" }) {
   return (
     <Button size={size} onClick={signIn} disabled={loading} className="h-11 gap-2.5 rounded-xl px-5 text-[15px] shadow-lg shadow-primary/20">
       {loading ? <Loader2 className="size-4 animate-spin" /> : <GoogleIcon />}
-      Continue with Google
+      {label}
     </Button>
   );
 }

@@ -5,6 +5,7 @@ import type {
 import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
 import type { GenerateResponse } from "@/lib/generate/schema";
 import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
+import type { ShareReportResponse } from "@/lib/share/schema";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -110,6 +111,34 @@ export async function saveGoal(goal: string): Promise<string | null> {
   const body = (await res.json().catch(() => ({}))) as { data?: { goal: string | null }; error?: string };
   if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
   return body.data?.goal ?? null;
+}
+
+/** Your readiness report for a sprint, or null if you haven't generated one. */
+export const getMyShareReport = (id: string) => rpc<ShareReportResponse | null>("getMyShareReport", { id });
+
+/** Copies a shared sprint into your account (returns your existing copy if you already cloned it). */
+export const cloneSharedSprint = (slug: string) => rpc<string>("cloneSharedSprint", { slug });
+
+/** Builds (or refreshes) the shareable readiness report for one of your sprints. The slug survives regeneration. */
+export async function generateShareReport(sprintId: string): Promise<ShareReportResponse> {
+  return shareRequest<ShareReportResponse>("POST", sprintId);
+}
+
+/** Deletes the report: the share link, image and clone link stop working. */
+export async function stopSharing(sprintId: string) {
+  await shareRequest("DELETE", sprintId);
+}
+
+async function shareRequest<T>(method: "POST" | "DELETE", sprintId: string): Promise<T> {
+  const res = await fetch("/api/share/report", {
+    method,
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ sprintId }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as T;
 }
 
 export const listMyGroups = () => rpc<MyGroup[]>("listMyGroups");
