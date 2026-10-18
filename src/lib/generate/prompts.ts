@@ -12,7 +12,12 @@ Return JSON matching the schema exactly. Rules:
 - start_date: yyyy-MM-dd only if the user gives one or a relative day ("next Monday", "tomorrow") — resolve against today. Otherwise null. Never invent a date.
 - rest_days: specific yyyy-MM-dd dates the user says they are unavailable. Empty if none.
 - difficulty_mix: fractions for basic/core/pro summing to 1. Default {basic:0.25, core:0.5, pro:0.25}; senior roles (SDE-2/3, senior, staff) lean harder (e.g. 0.15/0.5/0.35); beginners lean easier.
-- title: a short sprint name, e.g. "Google SDE-2 · 6 weeks".`;
+- title: a short sprint name, e.g. "Google SDE-2 · 6 weeks".
+Put those settings under "goal". Also return "unspecified": the settings among weeks, hours_per_day, company, weak_topics,
+skip_weekends that the user did NOT state and you filled with a default. Rules for "unspecified":
+- Never list a setting the user stated, even loosely ("a month", "an hour a day", "weekdays only").
+- company: list it only when no company is named AND the goal is about interviews / job prep.
+- weak_topics: list it only when the user names no weak or focus topics at all.`;
 
 export const goalUser = (prompt: string, today: string) => `Today is ${today}.\n\nUser goal:\n"""\n${prompt}\n"""`;
 
