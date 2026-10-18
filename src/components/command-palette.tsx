@@ -69,7 +69,7 @@ export function CommandPalette() {
               </CommandItem>
             </CommandGroup>
           )}
-          {!showAi && aiActions.length > 0 && (
+          {!showAi && (
             <CommandGroup heading="AI">
               {aiActions.map((a) => (
                 <CommandItem key={a.id} value={`ai ${a.label}`} keywords={["ai", "smart", "natural language"]} onSelect={run(a.run)}>
@@ -77,6 +77,10 @@ export function CommandPalette() {
                   <AiBadge className="ml-auto" />
                 </CommandItem>
               ))}
+              <CommandItem value="ai generate sprint sheet from a goal" keywords={["ai", "generate", "plan", "natural language"]} onSelect={run(() => router.push("/app/import"))}>
+                <AiSparkle /> <span className="ai-text font-medium">Generate a sheet from your goal</span>
+                <AiBadge className="ml-auto" />
+              </CommandItem>
             </CommandGroup>
           )}
           {otherActions.length > 0 && (

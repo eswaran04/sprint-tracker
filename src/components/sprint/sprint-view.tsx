@@ -146,12 +146,34 @@ export function SprintView({ id }: { id: string }) {
     }, 30);
   }, []);
 
-  // Deep links from the sidebar / ⌘K (`?ai=search|reschedule`): open the feature once, then drop the param.
+  // Daily Recall warmup: 1-2 problems solved 7/14/30 days ago (or starred), quizzed from your own notes.
+  const todayIso = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const recall = useMemo(() => pickRecall(problems, todayIso), [problems, todayIso]);
+  const hasWarmup = Boolean(headerStats.today) && recall.length > 0;
+
+  const openWarmup = useCallback(() => {
+    const el = document.getElementById("daily-warmup");
+    if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+    else toast.info("No warmup today", { description: "Problems you solved 7, 14 or 30 days ago (or starred) show up here." });
+  }, []);
+
+  /** AI Code & Intuition Reviewer lives in the notes drawer: open it on the focused or current working-day problem. */
+  const openReview = useCallback(() => {
+    const target = focused ?? problems.find((p) => p.day_no === working && !p.done_at) ?? problems.find((p) => !p.done_at) ?? problems[0];
+    if (!target) return;
+    revealProblem(target);
+    setNotesId(target.id);
+    toast.info("Write your approach or code, then click Analyze note", { description: target.name });
+  }, [focused, problems, working, revealProblem]);
+
+  // Deep links from the sidebar / ⌘K (`?ai=search|reschedule|warmup|review`): open the feature once, then drop the param.
   useEffect(() => {
     if (!aiIntent || !sprint) return;
     const t = setTimeout(() => {
       void setAiIntent(null);
       if (aiIntent === "search") openAiSearch();
+      else if (aiIntent === "warmup") openWarmup();
+      else if (aiIntent === "review") openReview();
       else if (cur) openCoach();
       else {
         toast.info("Set a start date to use smart reschedule");
@@ -159,7 +181,7 @@ export function SprintView({ id }: { id: string }) {
       }
     }, 0);
     return () => clearTimeout(t);
-  }, [aiIntent, sprint, cur, setAiIntent, openAiSearch, openCoach]);
+  }, [aiIntent, sprint, cur, setAiIntent, openAiSearch, openCoach, openWarmup, openReview]);
 
   const shift = useCallback(async () => {
     if (!cur) return;
@@ -167,10 +189,6 @@ export function SprintView({ id }: { id: string }) {
     await m.reschedule(changes);
     toast.success(`Shifted ${changes.length} problems`, { description: "Your plan now starts from today." });
   }, [cur, problems, sprintFor, m]);
-
-  // Daily Recall warmup: 1-2 problems solved 7/14/30 days ago (or starred), quizzed from your own notes.
-  const todayIso = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
-  const recall = useMemo(() => pickRecall(problems, todayIso), [problems, todayIso]);
 
   // Theory viva: marking a DBMS/OOPS/OS/CN topic done can first run a 2-question check. Un-marking stays immediate.
   const [vivaId, setVivaId] = useState<string | null>(null);
@@ -242,6 +260,8 @@ export function SprintView({ id }: { id: string }) {
       actions: [
         { id: "ai-search", label: "Search in plain language", ai: true, run: openAiSearch },
         ...(cur ? [{ id: "ai-reschedule", label: "Smart reschedule backlog", ai: true, run: openCoach }] : []),
+        ...(hasWarmup ? [{ id: "ai-warmup", label: "Start 5-minute daily warmup", ai: true, run: openWarmup }] : []),
+        { id: "ai-review", label: "Review my code & intuition", ai: true, run: openReview },
         ...(cur ? [{ id: "today", label: "Go to today", shortcut: "g t", run: jumpToday }] : []),
         { id: "view", label: view === "timeline" ? "Switch to table view" : "Switch to timeline view", shortcut: "t", run: () => setView({ view: view === "timeline" ? "table" : "timeline" }) },
         { id: "revisit", label: "Show revisit list", run: () => setFilters({ status: "starred" }) },
@@ -250,7 +270,7 @@ export function SprintView({ id }: { id: string }) {
       ],
     });
     return () => setPaletteContext(null);
-  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run, openAiSearch, openCoach]);
+  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run, openAiSearch, openCoach, hasWarmup, openWarmup, openReview]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current?.problem as Problem) ?? null);
@@ -286,7 +306,7 @@ export function SprintView({ id }: { id: string }) {
           onJumpToday={jumpToday}
           onCoach={cur ? openCoach : undefined}
         >
-          {headerStats.today && recall.length > 0 && (
+          {hasWarmup && (
             <DailyRecall
               sprintId={id}
               today={todayIso}

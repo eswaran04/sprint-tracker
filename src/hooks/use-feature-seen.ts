@@ -2,7 +2,7 @@
 
 import { useCallback, useSyncExternalStore } from "react";
 
-export type AiFeature = "smart-reschedule" | "ai-search";
+export type AiFeature = "smart-reschedule" | "ai-search" | "sheet-generator" | "daily-warmup" | "code-review";
 
 const key = (f: AiFeature) => `aibc:feature-seen:${f}`;
 const listeners = new Set<() => void>();

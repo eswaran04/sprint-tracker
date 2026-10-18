@@ -21,8 +21,8 @@ export function useFilters() {
   return [filters as Filters, setFilters] as const;
 }
 
-/** `?ai=search|reschedule` — deep link from navigation that opens an AI feature once the sprint loads. */
-export const AI_INTENTS = ["search", "reschedule"] as const;
+/** `?ai=search|reschedule|warmup|review` — deep link from navigation that opens an AI feature once the sprint loads. */
+export const AI_INTENTS = ["search", "reschedule", "warmup", "review"] as const;
 export type AiIntent = (typeof AI_INTENTS)[number];
 export const useAiIntent = () => useQueryState("ai", parseAsStringLiteral(AI_INTENTS).withOptions({ history: "replace" }));
 
