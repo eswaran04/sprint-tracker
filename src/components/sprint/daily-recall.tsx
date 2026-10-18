@@ -1,10 +1,12 @@
 "use client";
 
-import { Brain, Check, Eye, NotebookPen, Star, X } from "lucide-react";
+import { Check, Eye, NotebookPen, Star, X } from "lucide-react";
 import { useState } from "react";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { useRecallDismissed, useRecallQuestion } from "@/hooks/use-recall";
 import type { RecallCandidate } from "@/lib/recall/select";
 import type { Problem } from "@/lib/types";
@@ -27,25 +29,32 @@ export function DailyRecall({ sprintId, today, candidates, onStar, onOpenNotes }
   const [picks] = useState(candidates);
   const [index, setIndex] = useState(0);
   const [results, setResults] = useState<("nailed" | "fuzzy")[]>([]);
+  const [seen, markSeen] = useFeatureSeen("daily-warmup");
 
   if (dismissed || picks.length === 0) return null;
 
   const done = index >= picks.length;
   const grade = (r: "nailed" | "fuzzy") => {
     const c = picks[index];
+    markSeen();
     if (r === "fuzzy" && !c.problem.starred) onStar(c.problem);
     setResults((xs) => [...xs, r]);
     setIndex((i) => i + 1);
   };
 
   return (
-    <section aria-label="Daily Recall" className="rounded-2xl border border-primary/30 bg-card/60 px-4 py-3">
+    <section
+      id="daily-warmup"
+      aria-label="Daily Recall"
+      className="ai-border ai-glow scroll-mt-24 rounded-2xl px-4 py-3 [--ai-fill:var(--card)]"
+    >
       <div className="flex items-center gap-2 text-sm">
-        <Brain className="size-4 text-primary" />
-        <span className="font-medium">Daily Recall</span>
-        <span className="text-muted-foreground">· 2 mins</span>
+        <AiSparkle />
+        <span className="ai-text font-semibold">Daily Recall</span>
+        <span className="text-muted-foreground">· 5-min warmup</span>
+        {!seen && <AiBadge />}
         <span className="ml-auto text-xs text-muted-foreground tabular-nums">{Math.min(index + 1, picks.length)}/{picks.length}</span>
-        <Button variant="ghost" size="xs" onClick={dismiss} className="text-muted-foreground">
+        <Button variant="ghost" size="xs" onClick={() => (markSeen(), dismiss())} className="text-muted-foreground">
           {done ? <><X /> Close</> : "Skip today"}
         </Button>
       </div>

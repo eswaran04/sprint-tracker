@@ -15,13 +15,6 @@ const PRO = "#ff6b8b";
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`);
 
-function siteHost() {
-  try {
-    return new URL(process.env.SITE_URL ?? "").host;
-  } catch {
-    return "sprintboard";
-  }
-}
 
 function ReadinessPill({ r }: { r: CompanyReadiness }) {
   const color = r.score >= 75 ? ACCENT_2 : r.score >= 40 ? ACCENT : PRO;
@@ -83,13 +76,12 @@ function Card({ report }: { report: ShareReport }) {
       </div>
 
       {/* Footer */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", fontSize: 22, color: MUTED }}>
+      <div style={{ display: "flex", alignItems: "center", marginTop: "auto", fontSize: 22, color: MUTED }}>
         <div style={{ display: "flex", gap: 22 }}>
           <div style={{ display: "flex" }}>{`${stats.done}/${stats.total} solved`}</div>
           <div style={{ display: "flex" }}>{`${stats.streak}d streak`}</div>
           <div style={{ display: "flex", color: PRO }}>{`${stats.pro_done} Pro`}</div>
         </div>
-        <div style={{ display: "flex", color: FG }}>{`${siteHost()}/share/${report.slug}`}</div>
       </div>
     </div>
   );

@@ -99,5 +99,6 @@ export function vertexLlm(model: string, timeoutMs: number) {
   if (!isAiEnabled()) return null;
   return <T>(o: { system: string; user: string; schema: ZodType<T> }) => vertexJson({ ...o, model, timeoutMs });
 }
+export const coachModel = () => process.env.AI_COACH_MODEL || "gemini-2.5-flash";
 export const embedModel = () => process.env.AI_EMBED_MODEL || "gemini-embedding-001";
 export const embedDimensions = () => Number(process.env.AI_EMBED_DIMENSIONS) || 768;
