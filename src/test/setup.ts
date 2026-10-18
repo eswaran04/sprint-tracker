@@ -10,6 +10,7 @@ globalThis.ResizeObserver ??= RO as unknown as typeof ResizeObserver;
 Element.prototype.scrollIntoView ??= () => {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
+Element.prototype.setPointerCapture ??= () => {};
 window.matchMedia ??= ((q: string) => ({
   matches: false, media: q, onchange: null, addListener() {}, removeListener() {},
   addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false,

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSessionUser } from "@/components/shell/session-user";
+import { useAiFilters } from "@/hooks/use-ai-filters";
 import { useFilters, useView } from "@/hooks/use-filters";
 import { useGroupForSprint, useGroupProgress } from "@/hooks/use-groups";
 import { problemKey } from "@/lib/groups";
@@ -58,6 +59,7 @@ export function SprintView({ id }: { id: string }) {
 
   const filtered = useMemo(() => applyFilters(problems, filters), [problems, filters]);
   const facets = useMemo(() => getFacets(problems), [problems]);
+  const ai = useAiFilters(facets, filters, setFilters);
   const statusCounts = useMemo(() => {
     const base = problems.filter((p) => matches(p, { ...filters, status: "all" }));
     return Object.fromEntries(STATUSES.map((s) => [s, base.filter((p) => matches(p, { ...filters, status: s })).length])) as Record<Filters["status"], number>;
@@ -172,6 +174,7 @@ export function SprintView({ id }: { id: string }) {
     setPaletteContext({
       problems,
       onSelectProblem: revealProblem,
+      aiFilter: ai.run,
       actions: [
         ...(cur ? [{ id: "today", label: "Go to today", shortcut: "g t", run: jumpToday }] : []),
         { id: "view", label: view === "timeline" ? "Switch to table view" : "Switch to timeline view", shortcut: "t", run: () => setView({ view: view === "timeline" ? "table" : "timeline" }) },
@@ -181,7 +184,7 @@ export function SprintView({ id }: { id: string }) {
       ],
     });
     return () => setPaletteContext(null);
-  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters]);
+  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current?.problem as Problem) ?? null);
@@ -221,6 +224,8 @@ export function SprintView({ id }: { id: string }) {
                 view={view}
                 setView={(v) => setView({ view: v })}
                 resultCount={filtered.length}
+                onAiQuery={ai.run}
+                aiPending={ai.isPending}
               />
             </div>
             <ShortcutsHelp />

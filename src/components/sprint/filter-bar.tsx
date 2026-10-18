@@ -1,13 +1,16 @@
 "use client";
 
-import { ArrowDownUp, CalendarRange, Rows3, Search, X } from "lucide-react";
+import { ArrowDownUp, CalendarRange, Loader2, Rows3, Search, Sparkles, X } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatSubject } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { DEFAULT_FILTERS, isFiltering, STATUSES, type Facet, type Filters } from "@/lib/filters";
+import { MAX_QUERY_LENGTH } from "@/lib/ai/nl-filters";
 import { FacetSelect } from "./facet-select";
 import { SavedFilters } from "./saved-filters";
 
@@ -24,28 +27,84 @@ export interface FilterBarProps {
   view: "timeline" | "table";
   setView: (v: "timeline" | "table") => void;
   resultCount: number;
+  /** Enables the AI toggle in the search box: Enter sends the sentence here instead of setting `q`. */
+  onAiQuery?: (text: string) => Promise<void> | void;
+  aiPending?: boolean;
 }
 
-export function FilterBar({ filters, setFilters, facets, statusCounts, view, setView, resultCount }: FilterBarProps) {
+export function FilterBar({ filters, setFilters, facets, statusCounts, view, setView, resultCount, onAiQuery, aiPending = false }: FilterBarProps) {
   const active = isFiltering(filters);
+  const [aiMode, setAiMode] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const ai = aiMode && Boolean(onAiQuery);
+  const submitAi = async () => {
+    if (!onAiQuery || !aiText.trim() || aiPending) return;
+    await onAiQuery(aiText);
+  };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1 sm:max-w-sm">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id="problem-search"
-            value={filters.q}
-            onChange={(e) => setFilters({ q: e.target.value })}
-            placeholder="Search problems, topics, companies…"
-            className="h-8 rounded-lg pr-8 pl-8"
-          />
-          {filters.q ? (
-            <button onClick={() => setFilters({ q: "" })} className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear search">
-              <X className="size-3.5" />
-            </button>
+          {ai ? (
+            aiPending ? (
+              <Loader2 className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 animate-spin text-primary" aria-label="Interpreting" />
+            ) : (
+              <Sparkles className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-primary" />
+            )
           ) : (
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground max-sm:hidden">/</kbd>
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          )}
+          {ai ? (
+            <Input
+              id="problem-search"
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void submitAi();
+                } else if (e.key === "Escape") {
+                  setAiMode(false);
+                }
+              }}
+              maxLength={MAX_QUERY_LENGTH}
+              disabled={aiPending}
+              aria-label="Describe what you want to see"
+              placeholder="e.g. Amazon sliding window I starred…"
+              className="h-8 rounded-lg border-primary/40 pr-14 pl-8"
+            />
+          ) : (
+            <Input
+              id="problem-search"
+              value={filters.q}
+              onChange={(e) => setFilters({ q: e.target.value })}
+              placeholder="Search problems, topics, companies…"
+              className={cn("h-8 rounded-lg pl-8", onAiQuery ? "pr-14" : "pr-8")}
+            />
+          )}
+          <span className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground", onAiQuery ? "right-8" : "right-2")}>
+            {!ai && filters.q ? (
+              <button onClick={() => setFilters({ q: "" })} className="flex hover:text-foreground" aria-label="Clear search">
+                <X className="size-3.5" />
+              </button>
+            ) : !ai ? (
+              <kbd className="pointer-events-none rounded border bg-muted px-1 font-mono text-[10px] max-sm:hidden">/</kbd>
+            ) : null}
+          </span>
+          {onAiQuery && (
+            <button
+              type="button"
+              onClick={() => setAiMode((v) => !v)}
+              aria-pressed={ai}
+              aria-label={ai ? "Switch to plain search" : "Filter with AI"}
+              title={ai ? "Plain search" : "Filter with AI"}
+              className={cn(
+                "absolute top-1/2 right-1.5 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-md transition-colors",
+                ai ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <Sparkles className="size-3.5" />
+            </button>
           )}
         </div>
         <Tabs value={filters.status} onValueChange={(v) => setFilters({ status: v as Filters["status"] })}>

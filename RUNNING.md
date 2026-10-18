@@ -1,0 +1,176 @@
+# Running Sprintboard Locally
+
+This guide gets the app running on your machine with the Firebase Auth emulator and a local PostgreSQL database.
+
+## Prerequisites
+
+| Tool | Version | Used for |
+| --- | --- | --- |
+| Node.js | 20+ (24 recommended) | Next.js app, scripts |
+| npm | 10+ | Dependencies |
+| PostgreSQL | 14+ (16 recommended) | Data store |
+| Java (JDK) | 17+ (21 recommended) | Firebase Auth emulator |
+| Docker (optional) | any recent | Easiest way to run Postgres |
+
+## 1. Install dependencies
+
+```bash
+npm install
+```
+
+## 2. Configure environment
+
+Create `.env.local` in the project root:
+
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=demo-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=demo-sprintboard.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=demo-sprintboard
+
+DATABASE_URL=postgres://sprintboard_app:sprintboard_app@localhost:5432/sprintboard
+MIGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:5432/sprintboard
+
+NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+```
+
+- `DATABASE_URL` is the app login (subject to row-level security).
+- `MIGRATION_DATABASE_URL` is the owner role, used only by migrations.
+- The emulator variables make auth use the local emulator instead of a real Firebase project.
+
+### Optional: AI features (Gemini on Vertex AI or Google AI Studio)
+
+The AI features (**AI filters**, **Analyze note** complexity/edge-case review, and **Describe your goal** sprint generator) run server-side.
+
+**Option A: Vertex AI (recommended, ADC credentials)**
+Add these to `.env.local`:
+
+```env
+GOOGLE_CLOUD_PROJECT=sprint-tracker-126ab
+GOOGLE_CLOUD_LOCATION=global
+AI_FILTERS_MODEL=gemini-2.5-flash-lite
+AI_REVIEW_MODEL=gemini-2.5-flash-lite     # optional, "Analyze note"
+AI_GENERATE_MODEL=gemini-2.5-flash-lite   # optional, "Describe your goal"
+AI_ENABLED=true
+```
+
+Then sign in once with `gcloud auth application-default login`. Your account needs `roles/aiplatform.user` on the project.
+
+**Option B: Gemini API Key (Google AI Studio)**
+Alternatively, you can provide an API key directly in `.env.local`:
+
+```env
+GEMINI_API_KEY=AIzaSy...
+AI_ENABLED=true
+```
+
+Without credentials or when `AI_ENABLED=false` (or leaving out both project and key), the ✨ toggle shows a "not available" message, while **Analyze note** and **Describe your goal** safely fall back to their built-in offline analyzer and planner. CI uses this offline setting.
+
+To test prompt accuracy and review generation against the live model (not part of CI), run `npm run test:ai`.
+
+### Optional: Similar sheets and goal recommendations (pgvector + Vertex embeddings)
+
+The same credentials power "Sheets like this one" and "Recommended for your goal" on Explore. The database needs the `vector` extension (migration `20261010000000_sheet_embeddings.sql` creates it):
+
+- Docker: the `pgvector/pgvector:pg16` image already includes it.
+- Homebrew: `brew install pgvector`. If `create extension vector` still fails, build it against PG16: `git clone https://github.com/pgvector/pgvector && cd pgvector && make PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config && make install PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config`.
+- Cloud SQL: run migrations as `postgres` (a `cloudsqlsuperuser` member). `sprintboard_app` can't create extensions.
+
+Sheets are re-embedded automatically after a sheet is published, renamed or its description changes. To backfill existing public sheets (only missing or changed sheets hit the model):
+
+```bash
+npm run embed:sheets            # all public sheets
+npm run embed:sheets -- <id>    # specific sheets
+```
+
+## 3. Start PostgreSQL
+
+### Option A: Docker
+
+```bash
+npm run db:up
+```
+
+### Option B: Local PostgreSQL (no Docker)
+
+**On macOS (Homebrew):**
+
+```bash
+brew services start postgresql@16
+createdb sprintboard
+psql -d sprintboard -c "CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';"
+psql -d sprintboard -f db/local-roles.sql
+```
+
+**On Debian/Ubuntu:**
+
+```bash
+sudo pg_ctlcluster 16 main start
+sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+sudo -u postgres createdb sprintboard
+sudo -u postgres psql -d sprintboard -f db/local-roles.sql
+```
+
+## 4. Apply migrations
+
+```bash
+npm run db:migrate
+```
+
+Re-run this whenever new files appear in `db/migrations/`.
+
+## 5. Start the Firebase Auth emulator
+
+In a separate terminal (requires Java):
+
+```bash
+npm run emulators
+```
+
+- Auth emulator: `127.0.0.1:9099`
+- Emulator UI: <http://localhost:4000>
+
+Warnings about `::1` only mean IPv6 is unavailable; they are harmless.
+
+## 6. Start the app
+
+In another terminal:
+
+```bash
+npm run dev
+```
+
+Open <http://localhost:3000> and sign in with Google. The emulator shows a fake account picker; choose **Add new account** and auto-generate the details.
+
+## Summary: the 4 things that must be running
+
+1. PostgreSQL (port 5432)
+2. Firebase Auth emulator (port 9099)
+3. Migrations applied (one-off per change)
+4. `npm run dev` (port 3000)
+
+## Verify
+
+```bash
+npm test            # unit and component tests
+npm run test:db     # RLS / SQL integration tests (needs Postgres)
+npm run test:ai     # live Gemini / Vertex AI eval tests
+npm run typecheck
+npm run lint
+```
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `docker: not found` | Use Option B (local PostgreSQL) in step 3. |
+| `db:migrate` fails on missing env | Make sure `.env.local` exists and is saved before running. |
+| Connection refused on 5432 | PostgreSQL isn't running; start it (step 3). |
+| Emulator fails to start | Check `java -version`; install JDK 17+. |
+| Sign-in fails or hangs | Confirm the emulator is running and both emulator env vars are set; restart `npm run dev` after editing `.env.local`. |
+| Port already in use | Stop the other process or change ports in `firebase.json` / `next dev -p <port>`. |
+| `Built-in analyzer (AI unavailable)` | Ensure `.env.local` has `GOOGLE_CLOUD_PROJECT` (and you ran `gcloud auth application-default login`) or `GEMINI_API_KEY`, and `AI_ENABLED=true`. Restart `npm run dev`. |
+
+## Production
+
+See the Deploy section in `README.md`. Production uses a real Firebase project (`NEXT_PUBLIC_FIREBASE_*`, `FIREBASE_SERVICE_ACCOUNT`) and a pooled `DATABASE_URL`, with no emulator variables.

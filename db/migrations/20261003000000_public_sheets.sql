@@ -91,14 +91,14 @@ from public.problems p
 join public.sprints s on s.id = p.sprint_id
 where s.visibility = 'public';
 
-revoke all on public.public_sheets, public.public_sheet_problems from anon, public;
+revoke all on public.public_sheets, public.public_sheet_problems from public;
 grant select on public.public_sheets, public.public_sheet_problems to authenticated;
 
 -- Copy a public sheet into the caller's account as a fresh sprint (no progress, no notes).
 create function public.copy_public_sheet(src uuid) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare
-  uid uuid := auth.uid();
+  uid text := app.uid();
   new_id uuid;
 begin
   if uid is null then
@@ -128,5 +128,5 @@ begin
   return new_id;
 end $$;
 
-revoke all on function public.copy_public_sheet(uuid) from anon, public;
+revoke all on function public.copy_public_sheet(uuid) from public;
 grant execute on function public.copy_public_sheet(uuid) to authenticated;
