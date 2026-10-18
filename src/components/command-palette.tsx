@@ -26,6 +26,11 @@ export function CommandPalette() {
   const path = usePathname();
   // Readiness report acts on the open sprint, falling back to the first one.
   const reportTarget = sprints?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? sprints?.[0]?.id;
+  // Weekly digest: the open group, else the one linked to the open sprint, else the first.
+  const digestTarget =
+    groups?.find((g) => path.startsWith(`/app/groups/${g.id}`))?.id ??
+    groups?.find((g) => g.sprint_id === reportTarget)?.id ??
+    groups?.[0]?.id;
   const { resolvedTheme, setTheme } = useTheme();
   const [accent, setAccent] = useAccent({ syncToAccount: true });
   const [search, setSearch] = useState("");
@@ -91,6 +96,16 @@ export function CommandPalette() {
                   onSelect={run(() => router.push(`/app/s/${reportTarget}/stats?report=1`))}
                 >
                   <AiSparkle /> <span className="ai-text font-medium">Generate readiness report</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              )}
+              {digestTarget && (
+                <CommandItem
+                  value="ai group weekly digest summary this week"
+                  keywords={["ai", "group", "weekly", "digest", "summary", "pair", "nudge"]}
+                  onSelect={run(() => router.push(`/app/groups/${digestTarget}#weekly-digest`))}
+                >
+                  <AiSparkle /> <span className="ai-text font-medium">Group weekly digest</span>
                   <AiBadge className="ml-auto" />
                 </CommandItem>
               )}
