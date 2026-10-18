@@ -38,6 +38,13 @@ env:
     value: global
   - variable: AI_FILTERS_MODEL
     value: gemini-2.5-flash-lite
+  # "Analyze note" (/api/ai/review) and "Describe your goal" (/api/ai/generate).
+  - variable: AI_REVIEW_MODEL
+    value: gemini-2.5-flash-lite
+  - variable: AI_GENERATE_MODEL
+    value: gemini-2.5-flash-lite
+  - variable: AI_ENABLED
+    value: "true"
   # Alternative embedding model: text-embedding-005 (fixed 768 dims, no size setting needed).
   - variable: AI_EMBED_MODEL
     value: gemini-embedding-001
