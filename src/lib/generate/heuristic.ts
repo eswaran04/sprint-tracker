@@ -1,5 +1,5 @@
 import { addDays, format, nextMonday, parseISO } from "date-fns";
-import type { Goal } from "./schema";
+import type { ClarifiableField, Goal, GoalDraft } from "./schema";
 
 /**
  * Regex-based fallback for goal parsing, used when the LLM is unavailable or fails. Covers the common phrasings
@@ -30,6 +30,11 @@ const TOPIC_WORDS: [RegExp, string][] = [
 const topicsIn = (s: string) => TOPIC_WORDS.filter(([re]) => re.test(s)).map(([, t]) => t);
 
 export function heuristicGoal(prompt: string, today: string): Goal {
+  return heuristicGoalDraft(prompt, today).goal;
+}
+
+/** Like `heuristicGoal`, but also reports which settings were defaulted because the prompt didn't state them. */
+export function heuristicGoalDraft(prompt: string, today: string): GoalDraft {
   const p = prompt.replace(/\s+/g, " ");
   const company = COMPANIES.find((c) => new RegExp(`\\b${c}\\b`, "i").test(p)) ?? null;
 
@@ -74,7 +79,7 @@ export function heuristicGoal(prompt: string, today: string): Goal {
   const role = p.match(/\b((?:sde|swe)[- ]?(?:\d|i{1,3})|senior|staff)\b/i)?.[1];
   const title = [company, role?.toUpperCase(), `${weeks} week${weeks === 1 ? "" : "s"}`].filter(Boolean).join(" · ");
 
-  return {
+  const goal: Goal = {
     company,
     weeks,
     hours_per_day: hours,
@@ -86,4 +91,28 @@ export function heuristicGoal(prompt: string, today: string): Goal {
     difficulty_mix: mix,
     title: title || "My prep sprint",
   };
+  const unspecified = unstatedFields(p).filter((f) => {
+    if (f === "company") return !company;
+    if (f === "weak_topics") return !weak.length && !focus.length;
+    return true;
+  });
+  return { goal, unspecified };
+}
+
+/**
+ * Settings the prompt clearly doesn't mention, judged by wording alone. Used for the heuristic draft and to back
+ * up the model's own `unspecified` list for the numeric/boolean settings, which regexes detect reliably.
+ */
+export function unstatedFields(prompt: string): ClarifiableField[] {
+  const p = prompt.replace(/\s+/g, " ");
+  const out: ClarifiableField[] = [];
+  const duration = /\d+(?:\.\d+)?\s*(weeks?|wks?|w|months?|mos?|days?)\b|\b(a|one|two|three|four|six|eight) (weeks?|months?)\b|\b(by|before|until|deadline|next week|next month)\b|\d{4}-\d{2}-\d{2}/i;
+  if (!duration.test(p)) out.push("weeks");
+  if (!/\d+(?:\.\d+)?\s*(hours?|hrs?|h|minutes?|mins?)\b|\b(an|one|half an?) hours?\b|\bfull[- ]time\b/i.test(p)) out.push("hours_per_day");
+  // Only worth asking for a company when the goal is about interviews and none is named.
+  const namesCompany = COMPANIES.some((c) => new RegExp(`\\b${c}\\b`, "i").test(p)) || /\b(any|no specific|no particular) compan(y|ies)\b/i.test(p);
+  if (!namesCompany && /\b(interviews?|onsite|oa|faang|maang|job|placements?|offer)\b/i.test(p)) out.push("company");
+  if (!topicsIn(p).length && !/\b(weak|struggl\w*|bad at|focus|need (?:work|help))\b/i.test(p)) out.push("weak_topics");
+  if (!/\bweekends?\b|\bweekdays?\b|\bevery ?day\b|\b7 days\b/i.test(p)) out.push("skip_weekends");
+  return out;
 }

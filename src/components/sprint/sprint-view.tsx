@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSessionUser } from "@/components/shell/session-user";
 import { useAiFilters } from "@/hooks/use-ai-filters";
-import { useFilters, useView } from "@/hooks/use-filters";
+import { useCoach } from "@/hooks/use-coach";
+import { useAiIntent, useFilters, useView } from "@/hooks/use-filters";
 import { useGroupForSprint, useGroupProgress } from "@/hooks/use-groups";
 import { problemKey } from "@/lib/groups";
 import { useShortcuts } from "@/hooks/use-shortcuts";
@@ -18,6 +19,10 @@ import { applyFilters, DEFAULT_FILTERS, facets as getFacets, isFiltering, matche
 import { setPaletteContext } from "@/lib/palette-store";
 import { buildCalendar, currentPlanDay, makeSprintForDay, shiftBacklog, workingDay, type ScheduleConfig } from "@/lib/schedule";
 import type { Problem } from "@/lib/types";
+import { isVivaEnabled } from "@/hooks/use-recall";
+import { isTheory, pickRecall } from "@/lib/recall/select";
+import { DailyRecall } from "./daily-recall";
+import { CoachDialog } from "./coach-dialog";
 import { FilterBar } from "./filter-bar";
 import { MoveDialog } from "./move-dialog";
 import { NotesDrawer } from "./notes-drawer";
@@ -28,6 +33,7 @@ import { SprintActionsProvider, type SprintActions } from "./sprint-context";
 import { SprintHeader } from "./sprint-header";
 import { TableView } from "./table-view";
 import { TimelineView } from "./timeline-view";
+import { VivaDialog } from "./viva-dialog";
 
 const scrollToProblem = (id: string) =>
   setTimeout(() => document.querySelector(`[data-problem-id="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
@@ -42,6 +48,10 @@ export function SprintView({ id }: { id: string }) {
   const [moveId, setMoveId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [dragging, setDragging] = useState<Problem | null>(null);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [aiSearch, setAiSearch] = useState(false);
+  const [aiIntent, setAiIntent] = useAiIntent();
+  const coach = useCoach(id);
 
   const problems = useMemo(() => data?.problems ?? [], [data]);
   const sprint = data?.sprint;
@@ -120,6 +130,59 @@ export function SprintView({ id }: { id: string }) {
     if (target) revealProblem(target);
   }, [cur, filtered, problems, revealProblem]);
 
+  const { reset: resetCoach, generate: generateCoach } = coach;
+  const openCoach = useCallback(() => {
+    setCoachOpen(true);
+    resetCoach();
+    generateCoach();
+  }, [resetCoach, generateCoach]);
+
+  const openAiSearch = useCallback(() => {
+    setAiSearch(true);
+    setTimeout(() => {
+      const el = document.getElementById("problem-search");
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      el?.focus();
+    }, 30);
+  }, []);
+
+  // Daily Recall warmup: 1-2 problems solved 7/14/30 days ago (or starred), quizzed from your own notes.
+  const todayIso = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const recall = useMemo(() => pickRecall(problems, todayIso), [problems, todayIso]);
+  const hasWarmup = Boolean(headerStats.today) && recall.length > 0;
+
+  const openWarmup = useCallback(() => {
+    const el = document.getElementById("daily-warmup");
+    if (el) el.scrollIntoView({ block: "start", behavior: "smooth" });
+    else toast.info("No warmup today", { description: "Problems you solved 7, 14 or 30 days ago (or starred) show up here." });
+  }, []);
+
+  /** AI Code & Intuition Reviewer lives in the notes drawer: open it on the focused or current working-day problem. */
+  const openReview = useCallback(() => {
+    const target = focused ?? problems.find((p) => p.day_no === working && !p.done_at) ?? problems.find((p) => !p.done_at) ?? problems[0];
+    if (!target) return;
+    revealProblem(target);
+    setNotesId(target.id);
+    toast.info("Write your approach or code, then click Analyze note", { description: target.name });
+  }, [focused, problems, working, revealProblem]);
+
+  // Deep links from the sidebar / ⌘K (`?ai=search|reschedule|warmup|review`): open the feature once, then drop the param.
+  useEffect(() => {
+    if (!aiIntent || !sprint) return;
+    const t = setTimeout(() => {
+      void setAiIntent(null);
+      if (aiIntent === "search") openAiSearch();
+      else if (aiIntent === "warmup") openWarmup();
+      else if (aiIntent === "review") openReview();
+      else if (cur) openCoach();
+      else {
+        toast.info("Set a start date to use smart reschedule");
+        setSettingsOpen(true);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [aiIntent, sprint, cur, setAiIntent, openAiSearch, openCoach, openWarmup, openReview]);
+
   const shift = useCallback(async () => {
     if (!cur) return;
     const changes = shiftBacklog(problems, cur.day, sprintFor);
@@ -127,9 +190,28 @@ export function SprintView({ id }: { id: string }) {
     toast.success(`Shifted ${changes.length} problems`, { description: "Your plan now starts from today." });
   }, [cur, problems, sprintFor, m]);
 
+  // Theory viva: marking a DBMS/OOPS/OS/CN topic done can first run a 2-question check. Un-marking stays immediate.
+  const [vivaId, setVivaId] = useState<string | null>(null);
+  const toggleDone = useCallback(
+    (p: Problem) => {
+      if (!p.done_at && isTheory(p) && isVivaEnabled(id)) setVivaId(p.id);
+      else m.toggleDone(p);
+    },
+    [id, m],
+  );
+  const completeViva = useCallback(
+    (p: Problem, { star }: { star: boolean }) => {
+      setVivaId(null);
+      const latest = byId.get(p.id) ?? p;
+      if (!latest.done_at) m.toggleDone(latest);
+      if (star && !latest.starred) m.toggleStar(latest);
+    },
+    [byId, m],
+  );
+
   const actions: SprintActions = useMemo(
     () => ({
-      toggleDone: m.toggleDone,
+      toggleDone,
       toggleStar: m.toggleStar,
       openNotes: (p) => setNotesId(p.id),
       openMove: (p) => setMoveId(p.id),
@@ -141,7 +223,7 @@ export function SprintView({ id }: { id: string }) {
       currentDay: cur?.day ?? null,
       peersFor,
     }),
-    [m.toggleDone, m.toggleStar, moveToDay, focus, focusedId, filters, dateFor, cur, peersFor],
+    [toggleDone, m.toggleStar, moveToDay, focus, focusedId, filters, dateFor, cur, peersFor],
   );
 
   // Keyboard navigation over the visible list.
@@ -157,7 +239,7 @@ export function SprintView({ id }: { id: string }) {
     k: () => step(-1),
     ArrowDown: () => step(1),
     ArrowUp: () => step(-1),
-    x: () => focused && m.toggleDone(focused),
+    x: () => focused && toggleDone(focused),
     s: () => focused && m.toggleStar(focused),
     n: () => focused && setNotesId(focused.id),
     Enter: () => focused && setNotesId(focused.id),
@@ -176,6 +258,10 @@ export function SprintView({ id }: { id: string }) {
       onSelectProblem: revealProblem,
       aiFilter: ai.run,
       actions: [
+        { id: "ai-search", label: "Search in plain language", ai: true, run: openAiSearch },
+        ...(cur ? [{ id: "ai-reschedule", label: "Smart reschedule backlog", ai: true, run: openCoach }] : []),
+        ...(hasWarmup ? [{ id: "ai-warmup", label: "Start 5-minute daily warmup", ai: true, run: openWarmup }] : []),
+        { id: "ai-review", label: "Review my code & intuition", ai: true, run: openReview },
         ...(cur ? [{ id: "today", label: "Go to today", shortcut: "g t", run: jumpToday }] : []),
         { id: "view", label: view === "timeline" ? "Switch to table view" : "Switch to timeline view", shortcut: "t", run: () => setView({ view: view === "timeline" ? "table" : "timeline" }) },
         { id: "revisit", label: "Show revisit list", run: () => setFilters({ status: "starred" }) },
@@ -184,7 +270,7 @@ export function SprintView({ id }: { id: string }) {
       ],
     });
     return () => setPaletteContext(null);
-  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run]);
+  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run, openAiSearch, openCoach, hasWarmup, openWarmup, openReview]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current?.problem as Problem) ?? null);
@@ -212,7 +298,27 @@ export function SprintView({ id }: { id: string }) {
   return (
     <SprintActionsProvider value={actions}>
       <div className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-8">
-        <SprintHeader sprint={sprint} stats={headerStats} onSettings={() => setSettingsOpen(true)} onShift={shift} onJumpToday={jumpToday} />
+        <SprintHeader
+          sprint={sprint}
+          stats={headerStats}
+          onSettings={() => setSettingsOpen(true)}
+          onShift={shift}
+          onJumpToday={jumpToday}
+          onCoach={cur ? openCoach : undefined}
+        >
+          {hasWarmup && (
+            <DailyRecall
+              sprintId={id}
+              today={todayIso}
+              candidates={recall}
+              onStar={(p) => {
+                const latest = byId.get(p.id) ?? p;
+                if (!latest.starred) m.toggleStar(latest);
+              }}
+              onOpenNotes={(p) => setNotesId(p.id)}
+            />
+          )}
+        </SprintHeader>
         <div className="sticky top-0 z-20 -mx-4 border-b bg-background/85 px-4 py-3 backdrop-blur max-md:top-13 sm:-mx-8 sm:px-8">
           <div className="flex items-start gap-2">
             <div className="flex-1">
@@ -226,6 +332,8 @@ export function SprintView({ id }: { id: string }) {
                 resultCount={filtered.length}
                 onAiQuery={ai.run}
                 aiPending={ai.isPending}
+                aiMode={aiSearch}
+                onAiModeChange={setAiSearch}
               />
             </div>
             <ShortcutsHelp />
@@ -260,7 +368,21 @@ export function SprintView({ id }: { id: string }) {
         dateFor={dateFor}
         currentDay={cur?.day ?? null}
       />
+      <CoachDialog
+        open={coachOpen}
+        onOpenChange={setCoachOpen}
+        plan={coach.plan}
+        isPending={coach.isPending}
+        applying={coach.applying}
+        problems={problems}
+        dateFor={dateFor}
+        onRegenerate={coach.generate}
+        onApprove={async (plan) => {
+          if (await coach.approve(plan)) setCoachOpen(false);
+        }}
+      />
       <SettingsDialog sprint={sprint} open={settingsOpen} onOpenChange={setSettingsOpen} onSave={m.updateSprint} />
+      <VivaDialog problem={vivaId ? (byId.get(vivaId) ?? null) : null} onClose={() => setVivaId(null)} onComplete={completeViva} />
     </SprintActionsProvider>
   );
 }

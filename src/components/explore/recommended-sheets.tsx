@@ -6,16 +6,25 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useSprints } from "@/hooks/use-sprints";
 import { getGoal, recommendedSheets, saveGoal } from "@/lib/api";
 import { SheetCard } from "./sheet-card";
 
 const MAX_GOAL = 300;
 
 /**
- * "Recommended for your goal" above the Explore grid. Hidden entirely when the server has AI turned off.
+ * "Recommended for your goal" above the Explore grid. Hidden entirely when the server has AI turned off,
+ * and only shown to users who don't have a sheet (sprint) yet — it's an onboarding aid.
  * Without a goal it shows only a one-line goal input; with one, the closest public sheets by embedding.
  */
 export function RecommendedSheets() {
+  const { data: mine, isSuccess: sprintsLoaded } = useSprints();
+  // Wait for the sprint list so the section never flashes in for users who already have a sheet.
+  if (!sprintsLoaded || (mine?.length ?? 0) > 0) return null;
+  return <RecommendedSheetsPanel />;
+}
+
+function RecommendedSheetsPanel() {
   const qc = useQueryClient();
   const { data: goalState } = useQuery({ queryKey: ["goal"], queryFn: getGoal, retry: false, staleTime: Infinity });
   const goal = goalState?.goal ?? null;
