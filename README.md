@@ -2,9 +2,11 @@
 
 Turn an `.xlsx` DSA prep sheet into a day-by-day sprint tracker. Sign in with Google, then:
 
+- **Describe your goal**: type something like "Google SDE-2 in 6 weeks, 2 hrs/day, weak at DP and graphs, skip weekends" and get a personalised sprint built from problems in public sheets. The AI only selects and orders catalogue problem IDs (validated before use), so there are no invented problems or broken links. You review it in the same preview before saving. Gemini runs server-side on Vertex AI or Google AI Studio (see `RUNNING.md`); without it a built-in planner is used.
 - **Import** any sheet. Columns (Name, Url, Subject, Difficulty, Companies, Topics, Sprint, Day) are auto-detected, and you can fix the mapping before importing. Parsing happens in the browser.
 - **Track** progress. Mark problems done, star them to revisit, and write Markdown notes with highlighted code (autosaved).
-- **Filter & sort** by company, topic, difficulty, subject and status, with free-text search. Save filter combos you use often.
+- **AI Note Review**: instant analysis of your solution notes — evaluates time & space complexity, flags missing edge cases, and tags algorithmic patterns via Gemini (with an offline analyzer fallback when AI is disabled).
+- **Filter & sort** by company, topic, difficulty, subject and status, with free-text search and AI natural-language filter parsing. Save filter combos you use often.
 - **Reschedule**:
   - Set a start date, skip weekends and add rest days.
   - Drag problems between days, or use "Move to day…" on touch.
@@ -62,7 +64,7 @@ In production the app connects through the [Cloud SQL connector](https://github.
    ```
    The migrations create `app_server`. Create the app login role as `postgres`, with `psql` through the proxy or with **Cloud SQL Studio** in the console:
    `create role sprintboard_app login password '<app-pw>'; grant app_server to sprintboard_app;`
-3. **Firebase**: `firebase use --add` (alias `prod`). Fill the `REPLACE_WITH_*` values in [`apphosting.yaml`](apphosting.yaml). Store the app role password as a secret:
+3. **Firebase**: `firebase use --add` (alias `prod`). Review configuration in [`apphosting.yaml`](apphosting.yaml) (project, region, and Cloud SQL instance). Store the app role password as a secret:
    `firebase apphosting:secrets:set sprintboard-db-pass --project prod`
 4. `firebase apphosting:backends:create --project prod`. Connect this GitHub repo, root `/`, and pick the live branch. Each push to that branch rolls out.
 5. Let the backend reach Cloud SQL:
@@ -77,12 +79,15 @@ On App Hosting, `firebase-admin` uses the backend's default credentials, so `FIR
 | --- | --- |
 | `npm run dev` | Dev server |
 | `npm test` | Unit + component tests (Vitest) |
+| `npm run test:db` | Postgres integration tests |
+| `npm run test:ai` | Gemini / Vertex AI live eval tests |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run build` | Production build |
+| `npm run db:up` | Start local Postgres container |
 | `npm run db:migrate` | Apply SQL migrations |
+| `npm run embed:sheets` | Backfill vector embeddings for public sheets |
 | `npm run emulators` | Firebase Auth emulator |
-| `npm run test:db` | Postgres integration tests |
 
 ## Layout
 
@@ -90,8 +95,13 @@ On App Hosting, `firebase-admin` uses the backend's default credentials, so `FIR
 src/
   app/                  routes: landing, /app, /app/import, /app/s/[id], /app/s/[id]/stats, /auth/*
   proxy.ts              cookie-presence redirects (real checks in layout + /api)
-  app/api/rpc/[fn]      allowlisted data operations, run as the signed-in user
+  app/api/
+    ai/                 routes for filters, review (note analysis), and generate (sprint plan)
+    rpc/[fn]            allowlisted data operations, run as the signed-in user
   lib/
+    ai/                 Vertex AI / Google AI Studio Gemini client, prompts, and parsers
+    review/             solution note analyzer (Gemini + offline rule-based fallback)
+    generate/           sprint goal planner and catalog problem selector
     xlsx/               parseWorkbook (hyperlink-aware) + detectMapping/toProblems
     schedule.ts         plan day ↔ date, currentPlanDay, shiftBacklog, sprintForDay
     filters.ts          Filters schema, applyFilters, facets
@@ -100,8 +110,8 @@ src/
     db/                 pg pool, withUser (RLS session), ops
     firebase/           client SDK, admin SDK + session cookies
   hooks/                useSprint (optimistic mutations), useFilters (URL state), useShortcuts
-  components/sprint/    timeline, table, filter bar, notes drawer, dialogs
-db/migrations/          schema, RLS policies, SQL functions
+  components/           sprint (timeline, table, filters, notes drawer), import, ui
+db/migrations/          schema, RLS policies, SQL functions, pgvector
 ```
 
 ## Data & privacy

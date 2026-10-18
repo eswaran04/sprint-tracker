@@ -95,14 +95,19 @@ export const ops = {
 
   createSprint: op(
     z.object({
-      input: z.object({ title: str(200), start_date: day.nullable(), skip_weekends: z.boolean() }),
+      input: z.object({
+        title: str(200),
+        start_date: day.nullable(),
+        skip_weekends: z.boolean(),
+        rest_days: z.array(day).max(2000).optional(),
+      }),
       rows: z.array(problemInput).max(20_000),
     }),
     async (db, { input, rows }) => {
       const sprint = await one(
         db,
-        "insert into public.sprints (title, start_date, skip_weekends) values ($1, $2, $3) returning *",
-        [input.title, input.start_date, input.skip_weekends],
+        "insert into public.sprints (title, start_date, skip_weekends, rest_days) values ($1, $2, $3, coalesce($4::date[], '{}')) returning *",
+        [input.title, input.start_date, input.skip_weekends, input.rest_days ?? null],
       );
       if (rows.length) {
         await db.query(
