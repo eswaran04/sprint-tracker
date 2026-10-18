@@ -38,6 +38,36 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
 - `MIGRATION_DATABASE_URL` is the owner role, used only by migrations.
 - The emulator variables make auth use the local emulator instead of a real Firebase project.
 
+### Optional: AI filters (Gemini on Vertex AI)
+
+Add these to `.env.local`:
+
+```env
+GOOGLE_CLOUD_PROJECT=sprint-tracker-126ab
+GOOGLE_CLOUD_LOCATION=global
+AI_FILTERS_MODEL=gemini-2.5-flash-lite
+AI_ENABLED=true
+```
+
+Then sign in once with `gcloud auth application-default login`. Your account needs `roles/aiplatform.user` on the project. Without credentials, set `AI_ENABLED=false` (or leave out `GOOGLE_CLOUD_PROJECT`). The ✨ toggle still shows, but requests get a "not available" message. CI uses this setting.
+
+To check prompt accuracy against the live model (this is not part of CI), run `npm run test:ai`.
+
+### Optional: Similar sheets and goal recommendations (pgvector + Vertex embeddings)
+
+The same credentials power "Sheets like this one" and "Recommended for your goal" on Explore. The database needs the `vector` extension (migration `20261010000000_sheet_embeddings.sql` creates it):
+
+- Docker: the `pgvector/pgvector:pg16` image already includes it.
+- Homebrew: `brew install pgvector`. If `create extension vector` still fails, build it against PG16: `git clone https://github.com/pgvector/pgvector && cd pgvector && make PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config && make install PG_CONFIG=/opt/homebrew/opt/postgresql@16/bin/pg_config`.
+- Cloud SQL: run migrations as `postgres` (a `cloudsqlsuperuser` member). `sprintboard_app` can't create extensions.
+
+Sheets are re-embedded automatically after a sheet is published, renamed or its description changes. To backfill existing public sheets (only missing or changed sheets hit the model):
+
+```bash
+npm run embed:sheets            # all public sheets
+npm run embed:sheets -- <id>    # specific sheets
+```
+
 ## 3. Start PostgreSQL
 
 ### Option A: Docker

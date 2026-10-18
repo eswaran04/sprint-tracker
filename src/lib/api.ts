@@ -2,6 +2,7 @@ import type {
   Group, GroupActivityRow, GroupMember, GroupPreview, GroupProgressRow, GroupReaction, MyGroup, MyNudge, Problem, ProblemInput, PublicProblem,
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
+import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -69,6 +70,38 @@ export const getPublicSheet = (id: string) => rpc<{ sheet: PublicSheet; problems
 /** Copies a public sheet into the caller's account; returns the new sprint id. */
 export const copyPublicSheet = (id: string) => rpc<string>("copyPublicSheet", { id });
 
+/** Public sheets most similar to `id` (empty until it has been embedded). */
+export const similarSheets = (id: string, k = 6) => rpc<PublicSheet[]>("similarSheets", { id, k });
+
+/** Public sheets closest to your saved goal (empty without a goal). */
+export const recommendedSheets = (k = 6) => rpc<PublicSheet[]>("recommendedSheets", { k });
+
+export interface GoalState {
+  goal: string | null;
+  /** False when the server has AI turned off; the goal UI hides itself. */
+  enabled: boolean;
+}
+
+export async function getGoal(): Promise<GoalState> {
+  const res = await fetch("/api/me/goal", { credentials: "same-origin" });
+  const body = (await res.json().catch(() => ({}))) as { data?: GoalState; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as GoalState;
+}
+
+/** Saves your study goal (embedded on the server). An empty string clears it. */
+export async function saveGoal(goal: string): Promise<string | null> {
+  const res = await fetch("/api/me/goal", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ goal }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: { goal: string | null }; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data?.goal ?? null;
+}
+
 export const listMyGroups = () => rpc<MyGroup[]>("listMyGroups");
 
 /** Group + roster, or null when you're not a member (RLS hides it). */
@@ -115,6 +148,19 @@ export async function removeMember(groupId: string, userId: string) {
 
 export async function deleteGroup(groupId: string) {
   await rpc("deleteGroup", { groupId });
+}
+
+/** Interprets a typed sentence as filters for the current sheet (Gemini on Vertex AI). Only facet names are sent. */
+export async function aiFilters(text: string, facets: FacetNames): Promise<AiFilters> {
+  const res = await fetch("/api/ai/filters", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ text, facets }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: AiFilters; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as AiFilters;
 }
 
 /** Saves the theme accent on your account. */

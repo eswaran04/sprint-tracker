@@ -13,11 +13,14 @@
     "db:up": "docker compose up -d db",
     "db:migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs",
     "emulators": "firebase emulators:start --only auth",
-    "test:db": "node --env-file-if-exists=.env.local node_modules/.bin/vitest run --config vitest.db.config.mts"
+    "test:db": "node --env-file-if-exists=.env.local node_modules/.bin/vitest run --config vitest.db.config.mts",
+    "test:ai": "node --env-file-if-exists=.env.local node_modules/.bin/vitest run --config vitest.ai.config.mts",
+    "embed:sheets": "node --env-file-if-exists=.env.local scripts/embed-sheets.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@google-cloud/cloud-sql-connector": "^1.12.1",
+    "@google/genai": "^2.30.0",
     "@tanstack/react-query": "^5.104.0",
     "@tanstack/react-virtual": "^3.14.13",
     "@types/pg": "^8.23.1",
@@ -44,6 +47,7 @@
     "recharts": "^3.8.0",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1",
+    "server-only": "^0.0.1",
     "shadcn": "^4.21.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
@@ -63,6 +67,7 @@
     "eslint": "^9",
     "eslint-config-next": "^16.3.8",
     "firebase-tools": "^14.23.0",
+    "jiti": "^2.7.0",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
