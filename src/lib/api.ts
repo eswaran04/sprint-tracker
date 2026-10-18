@@ -3,7 +3,7 @@ import type {
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
 import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
-import type { GenerateResponse } from "@/lib/generate/schema";
+import type { GenerateRequest, GenerateResult } from "@/lib/generate/schema";
 import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
 import type { ShareReportResponse } from "@/lib/share/schema";
 
@@ -45,9 +45,10 @@ export const createSprint = (
 
 /**
  * Builds (but does not save) a sprint plan from a natural-language goal (Gemini on Vertex AI, server-side).
- * The server falls back to a built-in planner when AI is off or fails (`ai: false`).
+ * The server falls back to a built-in planner when AI is off or fails (`ai: false`). When the goal leaves settings
+ * out, the first call returns clarifying questions; send `goal` + `answers` (or `skip_questions`) to get the plan.
  */
-export const generateSprint = (args: { prompt: string; today: string }) => postAi<GenerateResponse>("/api/ai/generate", args);
+export const generateSprint = (args: GenerateRequest) => postAi<GenerateResult>("/api/ai/generate", args);
 
 export async function updateSprint(id: string, patch: SprintPatch) {
   await rpc("updateSprint", { id, patch });

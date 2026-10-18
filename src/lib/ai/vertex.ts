@@ -44,11 +44,22 @@ export const filtersModel = () => process.env.AI_FILTERS_MODEL || "gemini-2.5-fl
 export const reviewModel = () => process.env.AI_REVIEW_MODEL || "gemini-2.5-flash-lite";
 export const generateModel = () => process.env.AI_GENERATE_MODEL || "gemini-2.5-flash-lite";
 
-/** JSON Schema for `responseJsonSchema` (Vertex rejects the `$schema` key). */
-function jsonSchemaOf(schema: z.ZodType) {
-  const js = z.toJSONSchema(schema) as Record<string, unknown>;
-  delete js.$schema;
-  return js;
+/** Recursively drops keys Vertex rejects or can't compile in a response schema. */
+function stripKeys(node: unknown, keys: ReadonlySet<string>): unknown {
+  if (Array.isArray(node)) return node.map((n) => stripKeys(n, keys));
+  if (!node || typeof node !== "object") return node;
+  return Object.fromEntries(
+    Object.entries(node).filter(([k]) => !keys.has(k)).map(([k, v]) => [k, stripKeys(v, keys)]),
+  );
+}
+
+/**
+ * JSON Schema for `responseJsonSchema`. Vertex rejects the `$schema` key, and nested `maxItems`/`minItems`
+ * (e.g. sprints × days × ids in `PlanSchema`) make constrained decoding too large ("400 INVALID_ARGUMENT").
+ * The Zod schema still enforces those limits on the output in `vertexJson`.
+ */
+export function jsonSchemaOf(schema: z.ZodType) {
+  return stripKeys(z.toJSONSchema(schema), new Set(["$schema", "maxItems", "minItems"])) as Record<string, unknown>;
 }
 
 export interface VertexJsonOptions<T> {
