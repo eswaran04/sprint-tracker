@@ -99,6 +99,8 @@ export function vertexLlm(model: string, timeoutMs: number) {
   if (!isAiEnabled()) return null;
   return <T>(o: { system: string; user: string; schema: ZodType<T> }) => vertexJson({ ...o, model, timeoutMs });
 }
+/** Weekly group digest: rewords precomputed facts, so the small model is plenty. */
+export const digestModel = () => process.env.AI_DIGEST_MODEL || "gemini-2.5-flash-lite";
 export const coachModel = () => process.env.AI_COACH_MODEL || "gemini-2.5-flash";
 export const embedModel = () => process.env.AI_EMBED_MODEL || "gemini-embedding-001";
 export const embedDimensions = () => Number(process.env.AI_EMBED_DIMENSIONS) || 768;

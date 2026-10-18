@@ -1,5 +1,5 @@
 import type {
-  Group, GroupActivityRow, GroupMember, GroupPreview, GroupProgressRow, GroupReaction, MyGroup, MyNudge, Problem, ProblemInput, PublicProblem,
+  Group, GroupActivityRow, GroupDigest, GroupMember, GroupPreview, GroupProgressRow, GroupReaction, MyGroup, MyNudge, Problem, ProblemInput, PublicProblem,
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
 import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
@@ -173,9 +173,13 @@ export async function toggleReaction(groupId: string, targetUser: string, day: s
   await rpc("toggleReaction", { groupId, targetUser, day });
 }
 
-export async function sendNudge(groupId: string, targetUser: string) {
-  await rpc("sendNudge", { groupId, targetUser });
+/** Nudge a teammate, optionally with a short message (≤ 140 chars, only they can read it). */
+export async function sendNudge(groupId: string, targetUser: string, message?: string | null) {
+  await rpc("sendNudge", { groupId, targetUser, message: message ?? null });
 }
+
+/** Weekly group digest: facts computed server-side, worded by Gemini (or a template when AI is off). */
+export const groupDigest = (groupId: string, today: string) => postAi<GroupDigest | null>("/api/ai/digest", { groupId, today });
 
 export const myNudges = () => rpc<MyNudge[]>("myNudges");
 

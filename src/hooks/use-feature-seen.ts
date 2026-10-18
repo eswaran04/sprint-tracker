@@ -8,7 +8,8 @@ export type AiFeature =
   | "sheet-generator"
   | "daily-warmup"
   | "code-review"
-  | "readiness-report";
+  | "readiness-report"
+  | "group-digest";
 
 const key = (f: AiFeature) => `aibc:feature-seen:${f}`;
 const listeners = new Set<() => void>();

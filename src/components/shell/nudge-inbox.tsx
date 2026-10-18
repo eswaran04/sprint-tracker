@@ -40,6 +40,9 @@ export function NudgeInbox() {
           nudges.map((n) => (
             <Link key={n.id} href={`/app/groups/${n.group_id}`} className="block rounded-md px-2 py-2 text-sm hover:bg-muted">
               <span className="font-medium">{n.sender_name}</span> nudged you in <span className="font-medium">{n.group_name}</span>
+              {n.message && (
+                <q className="mt-1 block border-l-2 border-primary/40 pl-2 text-xs break-words text-muted-foreground italic">{n.message}</q>
+              )}
               <span className="block text-xs text-muted-foreground">{formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}</span>
             </Link>
           ))
