@@ -18,6 +18,8 @@ const uid = z.string().min(1).max(128);
 const day = z.iso.date();
 const str = (max: number) => z.string().max(max);
 const me = z.object({ name: str(200), avatar: str(2000).nullable() });
+/** Optional nudge text: trimmed first, "" → null (matches `send_nudge`; JS length is ≥ Postgres char_length). */
+const nudgeMessage = z.string().trim().max(140).nullable().optional().transform((v) => v || null);
 
 const sprintPatch = z
   .object({
@@ -223,8 +225,8 @@ export const ops = {
     return null;
   }),
 
-  sendNudge: op(z.object({ groupId: id, targetUser: uid }), async (db, a) => {
-    await db.query("select public.send_nudge($1, $2)", [a.groupId, a.targetUser]);
+  sendNudge: op(z.object({ groupId: id, targetUser: uid, message: nudgeMessage }), async (db, a) => {
+    await db.query("select public.send_nudge($1, $2, $3)", [a.groupId, a.targetUser, a.message]);
     return null;
   }),
 

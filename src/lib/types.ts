@@ -194,4 +194,40 @@ export interface MyNudge {
   group_name: string;
   sender_name: string;
   created_at: string;
+  /** Optional note from the sender (≤ 140 chars). Plain text: render it, never as HTML. */
+  message: string | null;
+}
+
+/** A problem as the weekly digest refers to it (catalogue fields only, never notes or stars). */
+export interface DigestProblem {
+  key: string;
+  name: string;
+  url: string;
+  difficulty: Difficulty | null;
+}
+
+/** Deterministic facts behind the weekly digest. The model may only reword these. */
+export interface DigestFacts {
+  groupName: string;
+  me: { userId: string; name: string; weekSolves: number; streak: number; done: number };
+  memberCount: number;
+  /** Solves in the last 7 days across the group. */
+  weekSolves: number;
+  /** Top members by solves this week (max 3, solves > 0). */
+  weekly: { userId: string; name: string; solves: number; streak: number }[];
+  /** Members who finished a whole sprint with the last solve in the past 7 days (max 3). */
+  cleared: { userId: string; name: string; sprintNo: number; problems: number }[];
+  /** Where you stand: overdue count vs your plan (null without a start date) and the closest peer ahead. */
+  behind: { overdue: number | null; planDay: number | null; ahead: { userId: string; name: string; by: number } | null };
+  /** Problems a teammate solved that you haven't (max 3). */
+  pairUp: { partner: { userId: string; name: string }; problem: DigestProblem; dueForMe: boolean }[];
+}
+
+/** The weekly digest card. `ai` is true when Gemini wrote the headline and lines. */
+export interface GroupDigest {
+  headline: string;
+  lines: string[];
+  pairUp: DigestFacts["pairUp"];
+  weekSolves: number;
+  ai: boolean;
 }

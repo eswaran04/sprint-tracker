@@ -191,6 +191,35 @@ describe("groups, reactions and nudges", () => {
     expect(await run(alice, "myNudges")).toEqual([]);
   });
 
+  it("keeps 2-argument send_nudge calls working (message defaults to null)", async () => {
+    await withUser(alice, (db) => db.query("select public.send_nudge($1, $2)", [groupId, bob]));
+    const [n] = await run(bob, "myNudges");
+    expect(n).toMatchObject({ sender_name: "Alice", message: null });
+    await run(bob, "markNudgesSeen");
+  });
+
+  it("stores a cleaned message that only the target can read", async () => {
+    // Both pairs in the first group were used today (24h limit), so use a fresh pair in a second group.
+    const carolSprint = await run(carol, "createSprint", { input: { title: "Carol", start_date: null, skip_weekends: false }, rows });
+    const g2 = await run<string>(carol, "createGroup", { sprintId: carolSprint.id, name: "Crew 2", me: me("Carol") });
+    const { group } = await run(carol, "getGroup", { id: g2 });
+    await run(alice, "joinGroup", { code: group.invite_code, me: me("Alice"), existingSprint: null });
+
+    await expect(
+      withUser(alice, (db) => db.query("select public.send_nudge($1, $2, $3)", [g2, carol, "x".repeat(141)])),
+    ).rejects.toThrow("under 140 characters");
+    expect(() => ops.sendNudge.args.parse({ groupId: g2, targetUser: carol, message: "x".repeat(141) })).toThrow();
+    expect(ops.sendNudge.args.parse({ groupId: g2, targetUser: carol, message: "   " })).toMatchObject({ message: null });
+
+    await run(alice, "sendNudge", { groupId: g2, targetUser: carol, message: "  LRU\ntonight?\t " });
+    expect((await run(carol, "myNudges"))[0]).toMatchObject({ group_name: "Crew 2", message: "LRU tonight?" });
+    expect(await run(alice, "myNudges")).toEqual([]);
+    const direct = await withUser(alice, (db) => db.query("select message from public.group_nudges where group_id = $1", [g2]));
+    expect(direct.rows).toEqual([]);
+    await expect(run(alice, "sendNudge", { groupId: g2, targetUser: carol, message: "again" })).rejects.toThrow("already nudged");
+    await run(carol, "deleteGroup", { groupId: g2 });
+  });
+
   it("blocks direct writes to group tables", async () => {
     await expect(
       withUser(carol, (db) => db.query("insert into public.group_members (group_id, user_id, sprint_id, display_name) values ($1,$2,$3,'x')", [groupId, carol, sprintId])),

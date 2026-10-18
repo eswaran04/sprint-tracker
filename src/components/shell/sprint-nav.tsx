@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, CalendarSync, Code2, Compass, FileSpreadsheet, MessageSquareText, Plus, Users } from "lucide-react";
+import { Brain, CalendarSync, Code2, Compass, FileChartColumn, FileSpreadsheet, MessageSquareText, Newspaper, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
@@ -39,8 +39,15 @@ export function SprintNav({ onNavigate }: { onNavigate?: () => void }) {
   const [generatorSeen] = useFeatureSeen("sheet-generator");
   const [warmupSeen] = useFeatureSeen("daily-warmup");
   const [reviewSeen] = useFeatureSeen("code-review");
+  const [reportSeen] = useFeatureSeen("readiness-report");
+  const [digestSeen] = useFeatureSeen("group-digest");
   // AI tools act on the open sprint, falling back to the first one.
   const aiTarget = data?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? data?.[0]?.id;
+  // The digest lives on a group page: the open group, else the one linked to the open sprint, else the first.
+  const digestTarget =
+    groups?.find((g) => path.startsWith(`/app/groups/${g.id}`))?.id ??
+    groups?.find((g) => g.sprint_id === aiTarget)?.id ??
+    groups?.[0]?.id;
   return (
     <nav className="flex flex-col gap-0.5">
       <Link
@@ -74,7 +81,26 @@ export function SprintNav({ onNavigate }: { onNavigate?: () => void }) {
             <AiNavLink href={`/app/s/${aiTarget}?ai=review`} onNavigate={onNavigate} isNew={!reviewSeen} icon={<Code2 className="size-4" />}>
               Code &amp; intuition review
             </AiNavLink>
+            <AiNavLink
+              href={`/app/s/${aiTarget}/stats?report=1`}
+              onNavigate={onNavigate}
+              isNew={!reportSeen}
+              active={path.startsWith(`/app/s/${aiTarget}/stats`)}
+              icon={<FileChartColumn className="size-4" />}
+            >
+              Readiness report
+            </AiNavLink>
           </>
+        )}
+        {digestTarget && (
+          <AiNavLink
+            href={`/app/groups/${digestTarget}#weekly-digest`}
+            onNavigate={onNavigate}
+            isNew={!digestSeen}
+            icon={<Newspaper className="size-4" />}
+          >
+            Group weekly digest
+          </AiNavLink>
         )}
       </div>
       <div className="flex items-center justify-between px-2 pb-1.5">

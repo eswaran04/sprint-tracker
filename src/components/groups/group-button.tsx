@@ -5,13 +5,16 @@ import { Check, Copy, Loader2, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSessionUser } from "@/components/shell/session-user";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { useGroupForSprint, useGroupProgress } from "@/hooks/use-groups";
 import { createGroup, listMyGroups } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { AvatarStack } from "./member-avatar";
 
 export const inviteUrl = (code: string) => `${location.origin}/app/join/${code}`;
@@ -41,6 +44,7 @@ export function GroupButton({ sprintId, sprintTitle }: { sprintId: string; sprin
   const linked = useGroupForSprint(sprintId);
   const { members } = useGroupProgress(linked?.id);
   const user = useSessionUser();
+  const [digestSeen] = useFeatureSeen("group-digest");
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(`${sprintTitle} group`);
@@ -57,11 +61,21 @@ export function GroupButton({ sprintId, sprintTitle }: { sprintId: string; sprin
   });
 
   if (linked) {
+    // Until the weekly digest has been seen, the button gets the AI border and points straight at the card.
     return (
-      <Button variant="outline" size="sm" asChild className="rounded-lg">
-        <Link href={`/app/groups/${linked.id}`}>
+      <Button variant="outline" size="sm" asChild className={cn("relative rounded-lg", !digestSeen && "ai-border ai-glow")}>
+        <Link
+          href={`/app/groups/${linked.id}${digestSeen ? "" : "#weekly-digest"}`}
+          title={digestSeen ? undefined : "New: AI weekly digest for your group"}
+        >
           {members.length > 0 ? <AvatarStack members={members} max={3} size="size-4" /> : <Users />}
           <span className="max-sm:hidden">Group</span>
+          {!digestSeen && (
+            <>
+              <AiSparkle className="size-3.5" />
+              <AiBadge className="pointer-events-none absolute -top-2 -right-2 shadow-sm" />
+            </>
+          )}
         </Link>
       </Button>
     );

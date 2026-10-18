@@ -1,14 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Link2, Loader2, MessageCircle, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Download, Link2, Loader2, MessageCircle, RefreshCw, Trash2 } from "lucide-react";
+import { parseAsBoolean, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { generateShareReport, getMyShareReport, stopSharing } from "@/lib/api";
 import { readinessHeadline } from "@/lib/readiness";
 import type { ShareReportResponse } from "@/lib/share/schema";
@@ -43,8 +46,24 @@ async function copy(text: string, message: string, description?: string) {
 
 /** "Generate Readiness Report": builds the shareable snapshot and offers copy/X/LinkedIn/Discord/PNG. */
 export function ShareReportDialog({ sprintId, title }: { sprintId: string; title: string }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
+  const [seen, markSeen] = useFeatureSeen("readiness-report");
+  const setOpen = (next: boolean) => {
+    if (next) markSeen();
+    setOpenState(next);
+  };
+  // Deep link from the sidebar / ⌘K (`?report=1`): open the dialog once, then drop the param.
+  const [reportIntent, setReportIntent] = useQueryState("report", parseAsBoolean.withOptions({ history: "replace" }));
+  useEffect(() => {
+    if (!reportIntent) return;
+    const t = setTimeout(() => {
+      void setReportIntent(null);
+      markSeen();
+      setOpenState(true);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [reportIntent, setReportIntent, markSeen]);
   const qc = useQueryClient();
   const key = ["share-report", sprintId];
 
@@ -88,14 +107,15 @@ export function ShareReportDialog({ sprintId, title }: { sprintId: string; title
     <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button variant="outline" className="gap-2">
-            <Sparkles className="text-primary" /> Generate Readiness Report
+          <Button variant="outline" className="ai-border ai-glow relative gap-2">
+            <AiSparkle /> <span className="ai-text font-semibold">Generate Readiness Report</span>
+            {!seen && <AiBadge className="absolute -top-2 -right-2 shadow-sm" />}
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              Readiness Report
+              <AiSparkle className="size-5" /> <span className="ai-text">Readiness Report</span>
               {report && <Badge variant={report.scout.ai ? "default" : "secondary"}>{report.scout.ai ? "AI" : "Built-in"}</Badge>}
             </DialogTitle>
             <DialogDescription>
