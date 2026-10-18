@@ -5,7 +5,7 @@ import { setPaletteContext, setPaletteOpen } from "@/lib/palette-store";
 import { mkProblem } from "@/test/fixtures/problems";
 import { renderWithProviders } from "@/test/render";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/app" }));
 vi.mock("@/lib/api", () => ({
   listSprints: vi.fn(async () => [{ id: "s1", title: "DSA Prep", total: 2, done: 0 }]),
   listMyGroups: vi.fn(async () => []),

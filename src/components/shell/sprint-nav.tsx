@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, CalendarSync, Code2, Compass, FileSpreadsheet, MessageSquareText, Plus, Users } from "lucide-react";
+import { Brain, CalendarSync, Code2, Compass, FileChartColumn, FileSpreadsheet, MessageSquareText, Plus, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
@@ -39,6 +39,7 @@ export function SprintNav({ onNavigate }: { onNavigate?: () => void }) {
   const [generatorSeen] = useFeatureSeen("sheet-generator");
   const [warmupSeen] = useFeatureSeen("daily-warmup");
   const [reviewSeen] = useFeatureSeen("code-review");
+  const [reportSeen] = useFeatureSeen("readiness-report");
   // AI tools act on the open sprint, falling back to the first one.
   const aiTarget = data?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? data?.[0]?.id;
   return (
@@ -73,6 +74,15 @@ export function SprintNav({ onNavigate }: { onNavigate?: () => void }) {
             </AiNavLink>
             <AiNavLink href={`/app/s/${aiTarget}?ai=review`} onNavigate={onNavigate} isNew={!reviewSeen} icon={<Code2 className="size-4" />}>
               Code &amp; intuition review
+            </AiNavLink>
+            <AiNavLink
+              href={`/app/s/${aiTarget}/stats?report=1`}
+              onNavigate={onNavigate}
+              isNew={!reportSeen}
+              active={path.startsWith(`/app/s/${aiTarget}/stats`)}
+              icon={<FileChartColumn className="size-4" />}
+            >
+              Readiness report
             </AiNavLink>
           </>
         )}
