@@ -12,6 +12,7 @@ import { useMyGroups } from "@/hooks/use-groups";
 import { useSprints } from "@/hooks/use-sprints";
 import { ACCENTS, swatch } from "@/lib/accents";
 import { setPaletteOpen, usePaletteContext, usePaletteOpen } from "@/lib/palette-store";
+import { openAiTour } from "@/lib/ai-tour-store";
 import { DifficultyDot } from "@/components/sprint/chips";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 
@@ -85,6 +86,10 @@ export function CommandPalette() {
                   <AiBadge className="ml-auto" />
                 </CommandItem>
               ))}
+              <CommandItem value="ai-tour-guide" keywords={["ai", "tour", "guide", "features"]} onSelect={run(() => openAiTour(0))}>
+                <AiSparkle /> <span className="ai-text font-medium">Explore AI features tour</span>
+                <AiBadge label="Tour" className="ml-auto" />
+              </CommandItem>
               <CommandItem value="ai generate sprint sheet from a goal" keywords={["ai", "generate", "plan", "natural language"]} onSelect={run(() => router.push("/app/import"))}>
                 <AiSparkle /> <span className="ai-text font-medium">Generate a sheet from your goal</span>
                 <AiBadge className="ml-auto" />

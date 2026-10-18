@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, CalendarSync, Code2, Compass, FileChartColumn, FileSpreadsheet, MessageSquareText, Newspaper, Plus, Users } from "lucide-react";
+import { Brain, CalendarSync, Code2, Compass, FileChartColumn, FileSpreadsheet, MessageSquareText, Newspaper, Plus, Sparkles, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { useMyGroups } from "@/hooks/use-groups";
 import { useSprints } from "@/hooks/use-sprints";
+import { openAiTour } from "@/lib/ai-tour-store";
 import { cn } from "@/lib/utils";
 import { ProgressRing } from "@/components/progress-ring";
 
@@ -61,9 +62,24 @@ export function SprintNav({ onNavigate }: { onNavigate?: () => void }) {
         <Compass className="size-4 text-primary" /> Explore sheets
       </Link>
       <div className="mb-3 flex flex-col gap-0.5">
-        <span className="flex items-center gap-1.5 px-2 pb-1.5 text-xs font-medium tracking-wide uppercase">
-          <AiSparkle className="size-3" /> <span className="ai-text">AI tools</span>
-        </span>
+        <div className="flex items-center justify-between px-2 pb-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-medium tracking-wide uppercase">
+            <AiSparkle className="size-3" /> <span className="ai-text">AI tools</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate?.();
+              openAiTour(0);
+            }}
+            className="group flex items-center gap-1 rounded-full border border-[var(--ai-2)]/30 bg-[var(--ai-2)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--ai-2)] transition-all hover:bg-[var(--ai-2)]/20 hover:border-[var(--ai-2)]/60 cursor-pointer"
+            title="Take a tour of the AI features"
+            aria-label="Take AI features tour"
+          >
+            <Sparkles className="size-2.5 transition-transform group-hover:rotate-12" />
+            <span>Tour</span>
+          </button>
+        </div>
         <AiNavLink href="/app/import" onNavigate={onNavigate} isNew={!generatorSeen} active={path.startsWith("/app/import")} icon={<FileSpreadsheet className="size-4" />}>
           Generate a sheet
         </AiNavLink>
