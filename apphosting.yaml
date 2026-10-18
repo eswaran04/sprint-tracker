@@ -16,6 +16,10 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: sprint-tracker-126ab
     availability: [BUILD, RUNTIME]
+  # Public origin for absolute OpenGraph/Twitter image URLs on /share/[slug] (crawlers need absolute URLs).
+  - variable: SITE_URL
+    value: https://sprintboard--sprint-tracker-126ab.asia-southeast1.hosted.app
+    availability: [BUILD, RUNTIME]
 
   # Cloud SQL Postgres via the Cloud SQL connector (src/lib/db/pool.ts). Instance: "project:region:instance".
   - variable: CLOUD_SQL_INSTANCE
@@ -29,3 +33,25 @@ env:
     secret: sprintboard-db-pass
   - variable: DATABASE_POOL_MAX
     value: "3"
+
+  # Vertex AI via Application Default Credentials (the runtime service account), so none of these are secrets.
+  # "global" is used because asia-southeast1 may not serve every model below.
+  - variable: GOOGLE_CLOUD_PROJECT
+    value: sprint-tracker-126ab
+  - variable: GOOGLE_CLOUD_LOCATION
+    value: global
+  - variable: AI_FILTERS_MODEL
+    value: gemini-2.5-flash-lite
+  # "Analyze note" (/api/ai/review) and "Describe your goal" (/api/ai/generate).
+  - variable: AI_REVIEW_MODEL
+    value: gemini-2.5-flash-lite
+  - variable: AI_GENERATE_MODEL
+    value: gemini-2.5-flash-lite
+  - variable: AI_ENABLED
+    value: "true"
+  # Alternative embedding model: text-embedding-005 (fixed 768 dims, no size setting needed).
+  - variable: AI_EMBED_MODEL
+    value: gemini-embedding-001
+  # gemini-embedding-001 defaults to 3072 dims; request 768 via outputDimensionality.
+  - variable: AI_EMBED_DIMENSIONS
+    value: "768"

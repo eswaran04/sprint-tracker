@@ -1,10 +1,15 @@
 "use client";
 
-import { Check, ExternalLink, Loader2 } from "lucide-react";
+import { Check, ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { analyzeNote } from "@/lib/api";
+import { stripReview } from "@/lib/review/blocks";
+import { renderReview, upsertReview } from "@/lib/review/format";
 import type { Problem } from "@/lib/types";
 import { CompanyTags, DifficultyChip, Tag } from "./chips";
 import { Markdown } from "./markdown";
@@ -43,6 +48,39 @@ function NotesEditor({ problem, onSave }: { problem: Problem; onSave: (notes: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => void flush(latest.current), []);
 
+  const [tab, setTab] = useState(problem.notes ? "preview" : "write");
+  const [analyzing, setAnalyzing] = useState(false);
+  const inflight = useRef<AbortController>(undefined);
+  // Drop a slow review if the drawer closes or switches problem (this editor is keyed by problem id).
+  useEffect(() => () => inflight.current?.abort(), []);
+
+  const canAnalyze = stripReview(value).length > 0 && !analyzing;
+  const analyze = async () => {
+    if (!canAnalyze) return;
+    const ctrl = new AbortController();
+    inflight.current = ctrl;
+    setAnalyzing(true);
+    try {
+      const { name, url, difficulty, subject, topics } = problem;
+      const { review, ai } = await analyzeNote({ name, url, difficulty, subject, topics }, value, ctrl.signal);
+      if (ctrl.signal.aborted) return;
+      const block = renderReview(review, ai);
+      // Apply to the latest text so edits made while waiting aren't lost.
+      setValue((v) => upsertReview(v, block));
+      setTab("preview");
+      if (ai) toast.success("Review added to your notes");
+      else toast.info("Built-in analysis added (AI unavailable)");
+    } catch (e) {
+      if (ctrl.signal.aborted || (e as Error).name === "AbortError") return;
+      toast.error((e as Error).message || "Couldn't analyze the note");
+    } finally {
+      if (inflight.current === ctrl) {
+        inflight.current = undefined;
+        setAnalyzing(false);
+      }
+    }
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Tab") return;
     e.preventDefault();
@@ -54,7 +92,7 @@ function NotesEditor({ problem, onSave }: { problem: Problem; onSave: (notes: st
   };
 
   return (
-    <Tabs defaultValue={problem.notes ? "preview" : "write"} className="flex min-h-0 flex-1 flex-col gap-3">
+    <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex items-center gap-2">
         <TabsList>
           <TabsTrigger value="write">Write</TabsTrigger>
@@ -67,6 +105,16 @@ function NotesEditor({ problem, onSave }: { problem: Problem; onSave: (notes: st
           {status === "saving" && <><Loader2 className="size-3 animate-spin" /> Saving…</>}
           {status === "saved" && <><Check className="size-3 text-basic" /> Saved</>}
         </span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={analyze}
+          disabled={!canAnalyze}
+          title="Review complexity, edge cases and missing pattern tags"
+        >
+          {analyzing ? <Loader2 className="animate-spin" /> : <Sparkles />}
+          {analyzing ? "Analyzing…" : "Analyze note"}
+        </Button>
       </div>
       <TabsContent value="write" className="min-h-0 flex-1">
         <Textarea

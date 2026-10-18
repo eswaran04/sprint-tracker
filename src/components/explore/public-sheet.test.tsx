@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   copyPublicSheet: vi.fn(async () => "copy-1"),
   listSprints: vi.fn(async () => [] as { id: string; copied_from: string | null }[]),
   updateSprint: vi.fn(async () => {}),
+  similarSheets: vi.fn(async () => [] as ReturnType<typeof mkSheet>[]),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -25,6 +26,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.getPublicSheet.mockResolvedValue({ sheet: mkSheet(), problems });
   api.listSprints.mockResolvedValue([]);
+  api.similarSheets.mockResolvedValue([]);
 });
 
 describe("PublicSheetView", () => {
@@ -80,6 +82,21 @@ describe("PublicSheetView", () => {
     await waitFor(() =>
       expect(api.updateSprint).toHaveBeenCalledWith("pub1", { title: "Blind 75+", description: "Arrays to DP in 20 sprints" }),
     );
+  });
+
+  it("shows similar sheets when there are any", async () => {
+    api.similarSheets.mockResolvedValue([mkSheet({ id: "sim1", title: "Graph Mastery" })]);
+    renderWithProviders(<PublicSheetView id="pub1" />);
+    expect(await screen.findByRole("heading", { name: "Sheets like this one" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Graph Mastery/ })).toHaveAttribute("href", "/app/sheets/sim1");
+    expect(api.similarSheets).toHaveBeenCalledWith("pub1", 3);
+  });
+
+  it("hides the similar section when there are no neighbours", async () => {
+    renderWithProviders(<PublicSheetView id="pub1" />);
+    await screen.findByText("Two Sum");
+    await waitFor(() => expect(api.similarSheets).toHaveBeenCalled());
+    expect(screen.queryByRole("heading", { name: "Sheets like this one" })).not.toBeInTheDocument();
   });
 
   it("hides the edit control from non-owners", async () => {

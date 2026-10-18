@@ -2,6 +2,10 @@ import type {
   Group, GroupActivityRow, GroupMember, GroupPreview, GroupProgressRow, GroupReaction, MyGroup, MyNudge, Problem, ProblemInput, PublicProblem,
   PublicSheet, SavedFilter, Sprint,
 } from "@/lib/types";
+import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
+import type { GenerateResponse } from "@/lib/generate/schema";
+import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
+import type { ShareReportResponse } from "@/lib/share/schema";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -34,8 +38,16 @@ export const listSprints = () => rpc<SprintSummary[]>("listSprints");
 
 export const getSprint = (id: string) => rpc<{ sprint: Sprint; problems: Problem[] }>("getSprint", { id });
 
-export const createSprint = (input: { title: string; start_date: string | null; skip_weekends: boolean }, rows: ProblemInput[]) =>
-  rpc<Sprint>("createSprint", { input, rows });
+export const createSprint = (
+  input: { title: string; start_date: string | null; skip_weekends: boolean; rest_days?: string[] },
+  rows: ProblemInput[],
+) => rpc<Sprint>("createSprint", { input, rows });
+
+/**
+ * Builds (but does not save) a sprint plan from a natural-language goal (Gemini on Vertex AI, server-side).
+ * The server falls back to a built-in planner when AI is off or fails (`ai: false`).
+ */
+export const generateSprint = (args: { prompt: string; today: string }) => postAi<GenerateResponse>("/api/ai/generate", args);
 
 export async function updateSprint(id: string, patch: SprintPatch) {
   await rpc("updateSprint", { id, patch });
@@ -68,6 +80,66 @@ export const getPublicSheet = (id: string) => rpc<{ sheet: PublicSheet; problems
 
 /** Copies a public sheet into the caller's account; returns the new sprint id. */
 export const copyPublicSheet = (id: string) => rpc<string>("copyPublicSheet", { id });
+
+/** Public sheets most similar to `id` (empty until it has been embedded). */
+export const similarSheets = (id: string, k = 6) => rpc<PublicSheet[]>("similarSheets", { id, k });
+
+/** Public sheets closest to your saved goal (empty without a goal). */
+export const recommendedSheets = (k = 6) => rpc<PublicSheet[]>("recommendedSheets", { k });
+
+export interface GoalState {
+  goal: string | null;
+  /** False when the server has AI turned off; the goal UI hides itself. */
+  enabled: boolean;
+}
+
+export async function getGoal(): Promise<GoalState> {
+  const res = await fetch("/api/me/goal", { credentials: "same-origin" });
+  const body = (await res.json().catch(() => ({}))) as { data?: GoalState; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as GoalState;
+}
+
+/** Saves your study goal (embedded on the server). An empty string clears it. */
+export async function saveGoal(goal: string): Promise<string | null> {
+  const res = await fetch("/api/me/goal", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ goal }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: { goal: string | null }; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data?.goal ?? null;
+}
+
+/** Your readiness report for a sprint, or null if you haven't generated one. */
+export const getMyShareReport = (id: string) => rpc<ShareReportResponse | null>("getMyShareReport", { id });
+
+/** Copies a shared sprint into your account (returns your existing copy if you already cloned it). */
+export const cloneSharedSprint = (slug: string) => rpc<string>("cloneSharedSprint", { slug });
+
+/** Builds (or refreshes) the shareable readiness report for one of your sprints. The slug survives regeneration. */
+export async function generateShareReport(sprintId: string): Promise<ShareReportResponse> {
+  return shareRequest<ShareReportResponse>("POST", sprintId);
+}
+
+/** Deletes the report: the share link, image and clone link stop working. */
+export async function stopSharing(sprintId: string) {
+  await shareRequest("DELETE", sprintId);
+}
+
+async function shareRequest<T>(method: "POST" | "DELETE", sprintId: string): Promise<T> {
+  const res = await fetch("/api/share/report", {
+    method,
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ sprintId }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as T;
+}
 
 export const listMyGroups = () => rpc<MyGroup[]>("listMyGroups");
 
@@ -115,6 +187,33 @@ export async function removeMember(groupId: string, userId: string) {
 
 export async function deleteGroup(groupId: string) {
   await rpc("deleteGroup", { groupId });
+}
+
+/** Interprets a typed sentence as filters for the current sheet (Gemini on Vertex AI). Only facet names are sent. */
+export const aiFilters = (text: string, facets: FacetNames) => postAi<AiFilters>("/api/ai/filters", { text, facets });
+
+/**
+ * AI review of a problem's notes (complexity, edge cases, missing tags) via Gemini on Vertex AI, server-side.
+ * The server falls back to the built-in analyzer when AI is off or fails (`ai: false`). `signal` cancels the request.
+ */
+export async function analyzeNote(problem: ReviewProblem, notes: string, signal?: AbortSignal): Promise<ReviewResponse> {
+  if (!notes.trim()) throw new Error("Write your approach or paste your code first.");
+  if (notes.length > MAX_NOTES) throw new Error("This note is too long to analyze.");
+  return postAi<ReviewResponse>("/api/ai/review", { problem, notes }, signal);
+}
+
+/** POSTs JSON to an `/api/ai/*` route and unwraps `{ data }`. Throws with the server's message. */
+async function postAi<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(payload),
+    signal,
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as T;
 }
 
 /** Saves the theme accent on your account. */
