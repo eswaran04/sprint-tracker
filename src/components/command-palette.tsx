@@ -2,7 +2,7 @@
 
 import { Check, Compass, FolderKanban, Moon, Plus, Users, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
@@ -23,6 +23,9 @@ export function CommandPalette() {
   const { data: sprints } = useSprints();
   const { data: groups } = useMyGroups();
   const router = useRouter();
+  const path = usePathname();
+  // Readiness report acts on the open sprint, falling back to the first one.
+  const reportTarget = sprints?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? sprints?.[0]?.id;
   const { resolvedTheme, setTheme } = useTheme();
   const [accent, setAccent] = useAccent({ syncToAccount: true });
   const [search, setSearch] = useState("");
@@ -81,6 +84,16 @@ export function CommandPalette() {
                 <AiSparkle /> <span className="ai-text font-medium">Generate a sheet from your goal</span>
                 <AiBadge className="ml-auto" />
               </CommandItem>
+              {reportTarget && (
+                <CommandItem
+                  value="ai readiness report share progress"
+                  keywords={["ai", "readiness", "report", "share", "scout", "company"]}
+                  onSelect={run(() => router.push(`/app/s/${reportTarget}/stats?report=1`))}
+                >
+                  <AiSparkle /> <span className="ai-text font-medium">Generate readiness report</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              )}
             </CommandGroup>
           )}
           {otherActions.length > 0 && (
