@@ -19,8 +19,10 @@ export interface HeaderStats {
   shiftCount: number;
 }
 
-export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday }: {
+export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday, children }: {
   sprint: Sprint; stats: HeaderStats; onSettings: () => void; onShift: () => Promise<unknown>; onJumpToday: () => void;
+  /** Rendered between the title row and the Today banner (e.g. the Daily Recall warmup). */
+  children?: React.ReactNode;
 }) {
   const [confirm, setConfirm] = useState(false);
   const pct = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
@@ -76,6 +78,8 @@ export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday }
           </Button>
         </div>
       </div>
+
+      {children}
 
       {!stats.today ? (
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-dashed bg-card/30 px-4 py-3 text-sm">

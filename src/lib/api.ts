@@ -5,6 +5,7 @@ import type {
 import type { AiFilters, FacetNames } from "@/lib/ai/nl-filters";
 import type { GenerateResponse } from "@/lib/generate/schema";
 import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
+import { MAX_RECALL_NOTES, type RecallProblem, type RecallResponse, type VivaResponse } from "@/lib/recall/schema";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -172,6 +173,14 @@ export async function analyzeNote(problem: ReviewProblem, notes: string, signal?
   if (notes.length > MAX_NOTES) throw new Error("This note is too long to analyze.");
   return postAi<ReviewResponse>("/api/ai/review", { problem, notes }, signal);
 }
+
+/** Daily Recall: one question built from your own notes on a problem solved `daysAgo` days ago. */
+export const recallQuestion = (problem: RecallProblem, notes: string, daysAgo: number, signal?: AbortSignal) =>
+  postAi<RecallResponse>("/api/ai/recall", { mode: "recall", problem, notes: notes.slice(0, MAX_RECALL_NOTES), daysAgo }, signal);
+
+/** Theory viva: two rapid-fire interview questions on a DBMS/OOPS/OS/CN topic. */
+export const vivaQuestions = (problem: RecallProblem, notes: string, signal?: AbortSignal) =>
+  postAi<VivaResponse>("/api/ai/recall", { mode: "viva", problem, notes: notes.slice(0, MAX_RECALL_NOTES) }, signal);
 
 /** POSTs JSON to an `/api/ai/*` route and unwraps `{ data }`. Throws with the server's message. */
 async function postAi<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {

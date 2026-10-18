@@ -27,6 +27,8 @@ const api = vi.hoisted(() => ({
   groupProgress: vi.fn(async () => [] as unknown[]),
   createGroup: vi.fn(),
   aiFilters: vi.fn(),
+  recallQuestion: vi.fn(),
+  vivaQuestions: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -184,6 +186,59 @@ describe("SprintView", () => {
     await user.keyboard("jjj");
     expect(await screen.findByText("Two Sum")).toBeInTheDocument();
     expect(await dayHeader(3)).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("runs a viva before marking a theory topic done, and stars it when unsure", async () => {
+    localStorage.clear();
+    api.getSprint.mockResolvedValue({
+      sprint,
+      problems: [
+        mkProblem({ id: "t", name: "Deadlocks", subject: "os", day_no: 3, original_day_no: 3 }),
+        mkProblem({ id: "q", name: "Queue", subject: "dsa", day_no: 3, original_day_no: 3 }),
+      ],
+    });
+    api.vivaQuestions.mockResolvedValue({
+      mode: "viva",
+      ai: true,
+      viva: { questions: [{ question: "What is a deadlock?", answer: "A wait cycle." }, { question: "How to prevent it?", answer: "Lock ordering." }] },
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<SprintView id="s1" />);
+
+    // DSA problems are marked done immediately.
+    await user.click(await screen.findByRole("checkbox", { name: /Mark Queue done/ }));
+    await waitFor(() => expect(api.updateProblem).toHaveBeenCalledWith("q", { done_at: expect.any(String) }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: /Mark Deadlocks done/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(api.updateProblem).not.toHaveBeenCalledWith("t", expect.anything());
+    await user.click(within(dialog).getByRole("button", { name: "Start 2-question check" }));
+    expect(await within(dialog).findByText("What is a deadlock?")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /Reveal/ }));
+    await user.click(within(dialog).getByRole("button", { name: /Got it/ }));
+    await user.click(within(dialog).getByRole("button", { name: /Reveal/ }));
+    await user.click(within(dialog).getByRole("button", { name: /Not sure/ }));
+
+    await waitFor(() => expect(api.updateProblem).toHaveBeenCalledWith("t", { done_at: expect.any(String) }));
+    await waitFor(() => expect(api.updateProblem).toHaveBeenCalledWith("t", { starred: true }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows the Daily Recall warmup for a problem solved a week ago", async () => {
+    localStorage.clear();
+    api.getSprint.mockResolvedValue({
+      sprint,
+      problems: [
+        mkProblem({ id: "old", name: "LRU Cache", day_no: 1, original_day_no: 1, done_at: subDays(new Date(), 7).toISOString(), notes: "DLL + map" }),
+        mkProblem({ id: "new", name: "Two Sum", day_no: 3, original_day_no: 3 }),
+      ],
+    });
+    api.recallQuestion.mockResolvedValue({ mode: "recall", ai: false, recall: { intro: "A week ago…", question: "Why a DLL?", hint: "h", answer: "a" } });
+    renderWithProviders(<SprintView id="s1" />);
+    expect(await screen.findByRole("region", { name: "Daily Recall" })).toBeInTheDocument();
+    expect(await screen.findByText("Why a DLL?")).toBeInTheDocument();
+    expect(api.recallQuestion).toHaveBeenCalledWith(expect.objectContaining({ name: "LRU Cache" }), "DLL + map", 7, expect.anything());
   });
 
   it("filters with AI from the search box and can undo", async () => {

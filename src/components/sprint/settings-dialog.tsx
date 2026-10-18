@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSessionUser } from "@/components/shell/session-user";
+import { isVivaEnabled, setVivaEnabled } from "@/hooks/use-recall";
 import { deleteSprint, type SprintPatch } from "@/lib/api";
 import type { Sprint } from "@/lib/types";
 
@@ -42,12 +43,14 @@ function SettingsForm({ sprint, onDone, onSave }: { sprint: Sprint; onDone: () =
   const [isPublic, setIsPublic] = useState(sprint.visibility === "public");
   const [description, setDescription] = useState(sprint.description);
   const [showOwner, setShowOwner] = useState(sprint.show_owner);
+  const [viva, setViva] = useState(() => isVivaEnabled(sprint.id));
   const user = useSessionUser();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     setBusy(true);
+    setVivaEnabled(sprint.id, viva);
     try {
       await onSave({
         title: title.trim() || sprint.title,
@@ -118,6 +121,16 @@ function SettingsForm({ sprint, onDone, onSave }: { sprint: Sprint; onDone: () =
           <span className="block text-xs text-muted-foreground">Saturdays and Sundays aren&apos;t plan days.</span>
         </span>
         <Switch checked={skipWeekends} onCheckedChange={setSkipWeekends} />
+      </label>
+
+      <label className="flex items-center justify-between gap-4 rounded-lg border p-3">
+        <span>
+          <span className="block text-sm font-medium">Viva check on theory topics</span>
+          <span className="block text-xs text-muted-foreground">
+            Marking a DBMS/OOPS/OS/CN topic done offers a 2-question rapid-fire check first. Saved on this device.
+          </span>
+        </span>
+        <Switch checked={viva} onCheckedChange={setViva} aria-label="Viva check on theory topics" />
       </label>
 
       <div className="grid gap-2">
