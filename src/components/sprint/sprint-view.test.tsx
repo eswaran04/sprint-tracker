@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   aiFilters: vi.fn(),
   recallQuestion: vi.fn(),
   vivaQuestions: vi.fn(),
+  coachPlan: vi.fn(() => new Promise(() => {})),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -256,5 +257,21 @@ describe("SprintView", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(screen.queryByText("2 matches")).not.toBeInTheDocument());
+  });
+
+  it("opens the AI search from a ?ai=search deep link", async () => {
+    renderWithProviders(<SprintView id="s1" />, { searchParams: "?ai=search" });
+    const box = await screen.findByRole("textbox", { name: "Describe what you want to see" });
+    await waitFor(() => expect(box).toHaveFocus());
+  });
+
+  it("flags Smart reschedule as New until it is used", async () => {
+    localStorage.removeItem("aibc:feature-seen:smart-reschedule");
+    const user = userEvent.setup();
+    renderWithProviders(<SprintView id="s1" />);
+    const btn = await screen.findByRole("button", { name: /Smart reschedule/ });
+    expect(within(btn).getByText("New")).toBeInTheDocument();
+    await user.click(btn);
+    await waitFor(() => expect(within(btn).queryByText("New")).not.toBeInTheDocument());
   });
 });

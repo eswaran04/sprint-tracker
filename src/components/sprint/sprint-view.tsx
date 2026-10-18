@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSessionUser } from "@/components/shell/session-user";
 import { useAiFilters } from "@/hooks/use-ai-filters";
-import { useFilters, useView } from "@/hooks/use-filters";
+import { useCoach } from "@/hooks/use-coach";
+import { useAiIntent, useFilters, useView } from "@/hooks/use-filters";
 import { useGroupForSprint, useGroupProgress } from "@/hooks/use-groups";
 import { problemKey } from "@/lib/groups";
 import { useShortcuts } from "@/hooks/use-shortcuts";
@@ -21,6 +22,7 @@ import type { Problem } from "@/lib/types";
 import { isVivaEnabled } from "@/hooks/use-recall";
 import { isTheory, pickRecall } from "@/lib/recall/select";
 import { DailyRecall } from "./daily-recall";
+import { CoachDialog } from "./coach-dialog";
 import { FilterBar } from "./filter-bar";
 import { MoveDialog } from "./move-dialog";
 import { NotesDrawer } from "./notes-drawer";
@@ -46,6 +48,10 @@ export function SprintView({ id }: { id: string }) {
   const [moveId, setMoveId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [dragging, setDragging] = useState<Problem | null>(null);
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [aiSearch, setAiSearch] = useState(false);
+  const [aiIntent, setAiIntent] = useAiIntent();
+  const coach = useCoach(id);
 
   const problems = useMemo(() => data?.problems ?? [], [data]);
   const sprint = data?.sprint;
@@ -123,6 +129,37 @@ export function SprintView({ id }: { id: string }) {
     const target = filtered.find((p) => p.day_no >= cur.day) ?? problems.find((p) => p.day_no >= cur.day);
     if (target) revealProblem(target);
   }, [cur, filtered, problems, revealProblem]);
+
+  const { reset: resetCoach, generate: generateCoach } = coach;
+  const openCoach = useCallback(() => {
+    setCoachOpen(true);
+    resetCoach();
+    generateCoach();
+  }, [resetCoach, generateCoach]);
+
+  const openAiSearch = useCallback(() => {
+    setAiSearch(true);
+    setTimeout(() => {
+      const el = document.getElementById("problem-search");
+      el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      el?.focus();
+    }, 30);
+  }, []);
+
+  // Deep links from the sidebar / ⌘K (`?ai=search|reschedule`): open the feature once, then drop the param.
+  useEffect(() => {
+    if (!aiIntent || !sprint) return;
+    const t = setTimeout(() => {
+      void setAiIntent(null);
+      if (aiIntent === "search") openAiSearch();
+      else if (cur) openCoach();
+      else {
+        toast.info("Set a start date to use smart reschedule");
+        setSettingsOpen(true);
+      }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [aiIntent, sprint, cur, setAiIntent, openAiSearch, openCoach]);
 
   const shift = useCallback(async () => {
     if (!cur) return;
@@ -203,6 +240,8 @@ export function SprintView({ id }: { id: string }) {
       onSelectProblem: revealProblem,
       aiFilter: ai.run,
       actions: [
+        { id: "ai-search", label: "Search in plain language", ai: true, run: openAiSearch },
+        ...(cur ? [{ id: "ai-reschedule", label: "Smart reschedule backlog", ai: true, run: openCoach }] : []),
         ...(cur ? [{ id: "today", label: "Go to today", shortcut: "g t", run: jumpToday }] : []),
         { id: "view", label: view === "timeline" ? "Switch to table view" : "Switch to timeline view", shortcut: "t", run: () => setView({ view: view === "timeline" ? "table" : "timeline" }) },
         { id: "revisit", label: "Show revisit list", run: () => setFilters({ status: "starred" }) },
@@ -211,7 +250,7 @@ export function SprintView({ id }: { id: string }) {
       ],
     });
     return () => setPaletteContext(null);
-  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run]);
+  }, [sprint, problems, revealProblem, jumpToday, cur, view, setView, setFilters, ai.run, openAiSearch, openCoach]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor));
   const onDragStart = (e: DragStartEvent) => setDragging((e.active.data.current?.problem as Problem) ?? null);
@@ -239,7 +278,14 @@ export function SprintView({ id }: { id: string }) {
   return (
     <SprintActionsProvider value={actions}>
       <div className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-8">
-        <SprintHeader sprint={sprint} stats={headerStats} onSettings={() => setSettingsOpen(true)} onShift={shift} onJumpToday={jumpToday}>
+        <SprintHeader
+          sprint={sprint}
+          stats={headerStats}
+          onSettings={() => setSettingsOpen(true)}
+          onShift={shift}
+          onJumpToday={jumpToday}
+          onCoach={cur ? openCoach : undefined}
+        >
           {headerStats.today && recall.length > 0 && (
             <DailyRecall
               sprintId={id}
@@ -266,6 +312,8 @@ export function SprintView({ id }: { id: string }) {
                 resultCount={filtered.length}
                 onAiQuery={ai.run}
                 aiPending={ai.isPending}
+                aiMode={aiSearch}
+                onAiModeChange={setAiSearch}
               />
             </div>
             <ShortcutsHelp />
@@ -299,6 +347,19 @@ export function SprintView({ id }: { id: string }) {
         onMove={moveToDay}
         dateFor={dateFor}
         currentDay={cur?.day ?? null}
+      />
+      <CoachDialog
+        open={coachOpen}
+        onOpenChange={setCoachOpen}
+        plan={coach.plan}
+        isPending={coach.isPending}
+        applying={coach.applying}
+        problems={problems}
+        dateFor={dateFor}
+        onRegenerate={coach.generate}
+        onApprove={async (plan) => {
+          if (await coach.approve(plan)) setCoachOpen(false);
+        }}
       />
       <SettingsDialog sprint={sprint} open={settingsOpen} onOpenChange={setSettingsOpen} onSave={m.updateSprint} />
       <VivaDialog problem={vivaId ? (byId.get(vivaId) ?? null) : null} onClose={() => setVivaId(null)} onComplete={completeViva} />

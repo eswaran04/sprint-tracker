@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentPlanDay, dayToDate, makeSprintForDay, shiftBacklog, workingDay, type ScheduleConfig } from "./schedule";
+import { currentPlanDay, dayToDate, insertGapDays, makeSprintForDay, shiftBacklog, workingDay, type ScheduleConfig } from "./schedule";
 
 // 2026-10-01 is a Thursday.
 const base: ScheduleConfig = { startDate: "2026-10-01", skipWeekends: false, restDays: [] };
@@ -102,5 +102,21 @@ describe("workingDay", () => {
   it("returns the last day when everything is done, and null when empty", () => {
     expect(workingDay([p(1, "a"), p(5, "b")], 2)).toBe(5);
     expect(workingDay([], 2)).toBeNull();
+  });
+});
+
+describe("insertGapDays", () => {
+  it("pushes undone problems on/after each gap day forward, leaving done ones put", () => {
+    const ps = [
+      { id: "a", day_no: 3, done_at: null },
+      { id: "b", day_no: 4, done_at: null },
+      { id: "c", day_no: 4, done_at: "2026-10-01T00:00:00Z" },
+      { id: "d", day_no: 6, done_at: null },
+    ];
+    expect(insertGapDays(ps, [4, 6], () => 1)).toEqual([
+      { id: "b", day_no: 5, sprint_no: 1 },
+      { id: "d", day_no: 8, sprint_no: 1 },
+    ]);
+    expect(insertGapDays(ps, [], () => 1)).toEqual([]);
   });
 });

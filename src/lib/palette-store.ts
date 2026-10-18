@@ -4,7 +4,8 @@ import type { Problem } from "@/lib/types";
 export interface PaletteContext {
   problems: Problem[];
   onSelectProblem: (p: Problem) => void;
-  actions: { id: string; label: string; shortcut?: string; run: () => void }[];
+  /** `ai: true` actions are listed under the "AI" group with the gradient sparkle. */
+  actions: { id: string; label: string; shortcut?: string; ai?: boolean; run: () => void }[];
   /** When set, ⌘K offers "Filter with AI" for sentence-like input. */
   aiFilter?: (text: string) => Promise<void>;
 }

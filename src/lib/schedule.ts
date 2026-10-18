@@ -62,6 +62,34 @@ export function makeSprintForDay(rows: { original_day_no: number; sprint_no: num
   };
 }
 
+/** One problem's new placement; the payload of the `reschedule` op / `reschedule_problems`. */
+export interface Change {
+  id: string;
+  day_no: number;
+  sprint_no: number;
+}
+
+/**
+ * Pushes every undone problem on or after each gap day forward by one day per gap at or before it,
+ * leaving those plan days empty (e.g. review days). Done problems stay put.
+ */
+export function insertGapDays(
+  problems: { id: string; day_no: number; done_at: string | null }[],
+  gapDays: number[],
+  sprintFor: (day: number) => number,
+): Change[] {
+  const gaps = [...new Set(gapDays)].sort((a, b) => a - b);
+  if (!gaps.length) return [];
+  const out: Change[] = [];
+  for (const p of problems) {
+    if (p.done_at) continue;
+    let delta = 0;
+    for (const g of gaps) if (p.day_no + delta >= g) delta++;
+    if (delta) out.push({ id: p.id, day_no: p.day_no + delta, sprint_no: sprintFor(p.day_no + delta) });
+  }
+  return out;
+}
+
 /**
  * Slide the unfinished plan forward so the earliest overdue day lands on `today`.
  * Every undone problem on or after that day moves by the same delta; done problems stay put.

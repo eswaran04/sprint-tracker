@@ -1,8 +1,10 @@
 "use client";
 
-import { ArrowDownUp, CalendarRange, Loader2, Rows3, Search, Sparkles, X } from "lucide-react";
+import { ArrowDownUp, CalendarRange, Loader2, Rows3, Search, X } from "lucide-react";
 import { useState } from "react";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,15 +32,29 @@ export interface FilterBarProps {
   /** Enables the AI toggle in the search box: Enter sends the sentence here instead of setting `q`. */
   onAiQuery?: (text: string) => Promise<void> | void;
   aiPending?: boolean;
+  /** Optional controlled AI mode (lets navigation open the AI search); uncontrolled when omitted. */
+  aiMode?: boolean;
+  onAiModeChange?: (on: boolean) => void;
 }
 
-export function FilterBar({ filters, setFilters, facets, statusCounts, view, setView, resultCount, onAiQuery, aiPending = false }: FilterBarProps) {
+export function FilterBar({
+  filters, setFilters, facets, statusCounts, view, setView, resultCount, onAiQuery, aiPending = false,
+  aiMode: aiModeProp, onAiModeChange,
+}: FilterBarProps) {
   const active = isFiltering(filters);
-  const [aiMode, setAiMode] = useState(false);
+  const [aiModeState, setAiModeState] = useState(false);
+  const aiMode = aiModeProp ?? aiModeState;
+  const setAiMode = (next: boolean | ((v: boolean) => boolean)) => {
+    const v = typeof next === "function" ? next(aiMode) : next;
+    setAiModeState(v);
+    onAiModeChange?.(v);
+  };
   const [aiText, setAiText] = useState("");
+  const [aiSeen, markAiSeen] = useFeatureSeen("ai-search");
   const ai = aiMode && Boolean(onAiQuery);
   const submitAi = async () => {
     if (!onAiQuery || !aiText.trim() || aiPending) return;
+    markAiSeen();
     await onAiQuery(aiText);
   };
   return (
@@ -49,7 +65,7 @@ export function FilterBar({ filters, setFilters, facets, statusCounts, view, set
             aiPending ? (
               <Loader2 className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 animate-spin text-primary" aria-label="Interpreting" />
             ) : (
-              <Sparkles className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-primary" />
+              <AiSparkle className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2" />
             )
           ) : (
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -69,9 +85,10 @@ export function FilterBar({ filters, setFilters, facets, statusCounts, view, set
               }}
               maxLength={MAX_QUERY_LENGTH}
               disabled={aiPending}
+              autoFocus
               aria-label="Describe what you want to see"
-              placeholder="e.g. Amazon sliding window I starred…"
-              className="h-8 rounded-lg border-primary/40 pr-14 pl-8"
+              placeholder="Ask in plain words — e.g. Amazon sliding window I starred…"
+              className="ai-border ai-glow h-8 rounded-lg pr-14 pl-8 focus-visible:border-transparent"
             />
           ) : (
             <Input
@@ -99,11 +116,12 @@ export function FilterBar({ filters, setFilters, facets, statusCounts, view, set
               aria-label={ai ? "Switch to plain search" : "Filter with AI"}
               title={ai ? "Plain search" : "Filter with AI"}
               className={cn(
-                "absolute top-1/2 right-1.5 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-md transition-colors",
-                ai ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                "absolute top-1/2 right-1.5 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-md transition-all",
+                ai ? "bg-[color-mix(in_oklch,var(--ai-2),transparent_85%)]" : "hover:scale-110 hover:bg-muted",
               )}
             >
-              <Sparkles className="size-3.5" />
+              <AiSparkle className="size-3.5" />
+              {!aiSeen && !ai && <AiBadge label="AI" className="pointer-events-none absolute -top-2.5 -right-2 px-1 text-[8px]" />}
             </button>
           )}
         </div>
