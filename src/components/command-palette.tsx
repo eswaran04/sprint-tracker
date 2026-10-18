@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, Compass, FolderKanban, Moon, Plus, Users, Zap } from "lucide-react";
+import { Check, Compass, FolderKanban, Moon, Plus, Sparkles, Users, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
@@ -24,6 +24,16 @@ export function CommandPalette() {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const [accent, setAccent] = useAccent({ syncToAccount: true });
+  const [search, setSearch] = useState("");
+  const aiText = search.trim();
+  const showAi = Boolean(ctx?.aiFilter) && aiText.split(/\s+/).length >= 3;
+
+  // Start fresh each time the palette opens (state adjusted during render, not in an effect).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) setSearch("");
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -44,9 +54,18 @@ export function CommandPalette() {
   return (
     <CommandDialog open={open} onOpenChange={setPaletteOpen} title="Command palette" description="Search problems, sprints and actions">
       <Command>
-        <CommandInput placeholder="Search problems, sprints, actions…" />
+        <CommandInput value={search} onValueChange={setSearch} placeholder="Search problems, sprints, actions…" />
         <CommandList className="max-h-[60vh]">
-          <CommandEmpty>No results.</CommandEmpty>
+          {!showAi && <CommandEmpty>No results.</CommandEmpty>}
+          {showAi && ctx?.aiFilter && (
+            <CommandGroup heading="AI" forceMount>
+              {/* forceMount keeps cmdk's fuzzy match from hiding it; the value makes it rank first. */}
+              <CommandItem forceMount value={`ai-filter ${aiText}`} onSelect={run(() => void ctx.aiFilter!(aiText))}>
+                <Sparkles className="text-primary" />
+                <span className="truncate">Filter with AI: “{aiText}”</span>
+              </CommandItem>
+            </CommandGroup>
+          )}
           {ctx && ctx.actions.length > 0 && (
             <CommandGroup heading="Actions">
               {ctx.actions.map((a) => (
