@@ -140,6 +140,53 @@ export interface GroupReaction {
   reactor: string;
 }
 
+/** Weighted completion of one company's problems (Basic 1 · Core 2 · Pro 3). */
+export interface CompanyReadiness {
+  company: string;
+  /** 0–100. */
+  score: number;
+  done: number;
+  total: number;
+  /** "low" when the sample is small; the card marks it as early. */
+  confidence: "high" | "low";
+}
+
+/** The 2-line "AI Scout Report" plus the buckets it was written from. */
+export interface ScoutReport {
+  line1: string;
+  line2: string;
+  strengths: string[];
+  weaknesses: string[];
+  /** False when the built-in template wrote it (AI off or failed). */
+  ai: boolean;
+}
+
+export interface ReportStats {
+  pct: number;
+  done: number;
+  total: number;
+  streak: number;
+  longest: number;
+  pro_done: number;
+  pro_total: number;
+}
+
+/** Public readiness-report snapshot (`share_report(slug)`). */
+export interface ShareReport {
+  slug: string;
+  sprint_id: string;
+  title: string;
+  owner_name: string | null;
+  owner_avatar: string | null;
+  readiness: CompanyReadiness[];
+  scout: ScoutReport;
+  stats: ReportStats;
+  updated_at: string;
+}
+
+/** Row of `shared_roadmap(slug)`: catalogue columns plus a done flag. */
+export type SharedProblem = Omit<PublicProblem, "id" | "sprint_id"> & { done: boolean };
+
 /** Row of `my_nudges()`. */
 export interface MyNudge {
   id: string;

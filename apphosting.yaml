@@ -16,6 +16,10 @@ env:
   - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
     value: sprint-tracker-126ab
     availability: [BUILD, RUNTIME]
+  # Public origin for absolute OpenGraph/Twitter image URLs on /share/[slug] (crawlers need absolute URLs).
+  - variable: SITE_URL
+    value: https://sprintboard--sprint-tracker-126ab.asia-southeast1.hosted.app
+    availability: [BUILD, RUNTIME]
 
   # Cloud SQL Postgres via the Cloud SQL connector (src/lib/db/pool.ts). Instance: "project:region:instance".
   - variable: CLOUD_SQL_INSTANCE

@@ -4,7 +4,7 @@ import { computeCapacity } from "./capacity";
 import { dedupe, matchVocabulary, problemKey, rank, shortlist, toCandidates, type CatalogueRow } from "./catalogue";
 import { GenerateError, generateSprintPlan } from "./generate";
 import { heuristicGoal } from "./heuristic";
-import { GoalSchema, PlanSchema, type Goal, type Plan } from "./schema";
+import { GoalSchema, PlanSchema, type GenerateResult, type Goal, type Plan } from "./schema";
 
 const mix = { basic: 0.25, core: 0.5, pro: 0.25 };
 
@@ -155,14 +155,19 @@ describe("heuristicGoal", () => {
   });
 });
 
+function plan(r: GenerateResult) {
+  if (r.kind !== "plan") throw new Error(`expected a plan, got ${JSON.stringify(r)}`);
+  return r;
+}
+
 describe("generateSprintPlan", () => {
   const today = "2026-10-03"; // Saturday
 
   it("uses the LLM for goal + plan and maps ids to catalogue rows", async () => {
     const llm = vi.fn()
-      .mockResolvedValueOnce(goal)
+      .mockResolvedValueOnce({ goal, unspecified: [] })
       .mockResolvedValueOnce({ sprints: [{ theme: "DP first", days: [{ ids: ["p1", "p2"] }, { ids: ["p3"] }] }], rationale: "Because." });
-    const out = await generateSprintPlan("Google in 2 weeks", today, { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never });
+    const out = plan(await generateSprintPlan({ prompt: "Google in 2 weeks, 2 hrs/day", today }, { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never }));
     expect(out.ai).toBe(true);
     expect(out.start_date).toBe("2026-10-05"); // moved off the weekend
     expect(out.rationale).toBe("Because.");
@@ -174,21 +179,80 @@ describe("generateSprintPlan", () => {
   });
 
   it("falls back to the built-in planner when the LLM fails", async () => {
-    const llm = vi.fn().mockResolvedValueOnce(goal).mockRejectedValueOnce(new Error("timeout"));
-    const out = await generateSprintPlan("Google in 2 weeks", today, { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never });
+    const llm = vi.fn().mockResolvedValueOnce({ goal, unspecified: [] }).mockRejectedValueOnce(new Error("timeout"));
+    const out = plan(await generateSprintPlan({ prompt: "Google in 2 weeks, 2 hrs/day", today }, { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never }));
     expect(out.ai).toBe(false);
     expect(out.rows.length).toBeGreaterThan(0);
     expect(out.warnings.join(" ")).toMatch(/built-in planner/);
   });
 
   it("works without any LLM configured", async () => {
-    const out = await generateSprintPlan("Amazon in 1 week, 1 hour a day, weak at strings", today, { loadCatalogue: async () => dedupe(rows(40)), llm: null });
+    const out = plan(await generateSprintPlan({ prompt: "Amazon in 1 week, 1 hour a day, weak at strings", today }, { loadCatalogue: async () => dedupe(rows(40)), llm: null }));
     expect(out.ai).toBe(false);
     expect(out.goal.company).toBe("Amazon");
     expect(out.rows.length).toBeGreaterThan(0);
   });
 
+  it("plans the headline example straight away (no questions)", async () => {
+    const r = await generateSprintPlan(
+      { prompt: "Google SDE-2 interview in 6 weeks, 2 hrs/day, weak at DP and graphs, skip weekends.", today },
+      { loadCatalogue: async () => dedupe(rows(80)), llm: null },
+    );
+    expect(r.kind).toBe("plan");
+  });
+
+  it("asks catalogue-backed questions for a vague goal (heuristic path)", async () => {
+    const r = await generateSprintPlan({ prompt: "help me prep for interviews", today }, { loadCatalogue: async () => dedupe(rows(40)), llm: null });
+    expect(r.kind).toBe("questions");
+    if (r.kind !== "questions") return;
+    expect(r.questions.map((q) => q.field)).toEqual(["weeks", "hours_per_day", "company"]);
+    expect(r.questions[2].options).toEqual(expect.arrayContaining(["Google", "Amazon"]));
+  });
+
+  it("asks via the LLM draft and backs up missed numeric fields with wording checks", async () => {
+    const llm = vi.fn().mockResolvedValueOnce({ goal: { ...goal, company: null, weeks: 4 }, unspecified: [] });
+    const r = await generateSprintPlan({ prompt: "prep for interviews, weak at DP", today }, { loadCatalogue: async () => dedupe(rows(40)), llm: llm as never });
+    expect(r.kind).toBe("questions");
+    if (r.kind !== "questions") return;
+    expect(r.ai).toBe(true);
+    expect(r.questions.map((q) => q.field)).toEqual(["weeks", "hours_per_day"]);
+    expect(llm).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores settings the model wrongly reports as unspecified when the prompt states them", async () => {
+    const llm = vi.fn()
+      .mockResolvedValueOnce({ goal, unspecified: ["hours_per_day", "weak_topics", "skip_weekends", "company"] })
+      .mockResolvedValueOnce({ sprints: [{ theme: "Mixed", days: [{ ids: ["p1"] }] }], rationale: "Ok." });
+    const r = await generateSprintPlan(
+      { prompt: "Google SDE-2 interview in 6 weeks, 2 hrs/day, weak at DP and graphs, skip weekends.", today },
+      { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never },
+    );
+    expect(r.kind).toBe("plan");
+  });
+
+  it("round two reuses the goal, applies answers and makes only the planning call", async () => {
+    const llm = vi.fn().mockResolvedValueOnce({ sprints: [{ theme: "Mixed", days: [{ ids: ["p1"] }] }], rationale: "Ok." });
+    const out = plan(
+      await generateSprintPlan(
+        { prompt: "help me prep for interviews", today, goal: { ...goal, company: null, weak_topics: [] }, answers: { weeks: 3, company: "amazon", weak_topics: ["strings"] } },
+        { loadCatalogue: async () => dedupe(rows(80)), llm: llm as never },
+      ),
+    );
+    expect(llm).toHaveBeenCalledTimes(1);
+    expect(llm.mock.calls[0][0].schema).toBe(PlanSchema);
+    expect(out.goal).toMatchObject({ weeks: 3, company: "Amazon", weak_topics: ["Strings"] });
+    expect(out.ai).toBe(true);
+  });
+
+  it("skip_questions always produces a plan", async () => {
+    const out = plan(
+      await generateSprintPlan({ prompt: "help me prep for interviews", today, skip_questions: true }, { loadCatalogue: async () => dedupe(rows(40)), llm: null }),
+    );
+    expect(out.goal.weeks).toBe(4);
+    expect(out.rows.length).toBeGreaterThan(0);
+  });
+
   it("errors clearly on an empty catalogue", async () => {
-    await expect(generateSprintPlan("anything", today, { loadCatalogue: async () => dedupe([]), llm: null })).rejects.toBeInstanceOf(GenerateError);
+    await expect(generateSprintPlan({ prompt: "anything", today }, { loadCatalogue: async () => dedupe([]), llm: null })).rejects.toBeInstanceOf(GenerateError);
   });
 });

@@ -88,6 +88,73 @@ describe("public sheets", () => {
   });
 });
 
+describe("share reports (viral loop)", () => {
+  const app = async (sql: string, params: unknown[] = []) => (await pool()).query(sql, params); // app role, like src/lib/db/share.ts
+  const slug = `sheet-${tag}`;
+  const report = { readiness: "[]", scout: '{"line1":"a","line2":"b","strengths":[],"weaknesses":[],"ai":false}', stats: '{"pct":33}' };
+  let privateSprint: string;
+
+  beforeAll(async () => {
+    // A private sprint with progress and notes: sharing must not require publishing it.
+    const s = await run(alice, "createSprint", { input: { title: "Private", start_date: "2026-10-01", skip_weekends: false }, rows });
+    privateSprint = s.id;
+    const { problems } = await run(alice, "getSprint", { id: privateSprint });
+    await run(alice, "updateProblem", { id: problems[0].id, patch: { done_at: new Date().toISOString(), notes: "secret", starred: true } });
+  });
+
+  it("has no public image or roadmap before the owner generates a report", async () => {
+    expect((await app("select * from public.share_report_for_sprint($1)", [privateSprint])).rows).toEqual([]);
+    expect((await app("select * from public.shared_roadmap($1)", [slug])).rows).toEqual([]);
+  });
+
+  it("lets only the owner write a report, and only for their own sprint", async () => {
+    const insert = (uid: string, sprint: string, s: string) =>
+      withUser(uid, (db) =>
+        db.query("insert into public.share_reports (slug, sprint_id, title, readiness, scout, stats) values ($1, $2, 'Private', $3, $4, $5)", [
+          s, sprint, report.readiness, report.scout, report.stats,
+        ]),
+      );
+    await expect(insert(bob, privateSprint, `bob-${tag}`)).rejects.toMatchObject({ code: "42501" });
+    await insert(alice, privateSprint, slug);
+    expect(await run(alice, "getMyShareReport", { id: privateSprint })).toMatchObject({ slug, title: "Private" });
+    expect(await run(bob, "getMyShareReport", { id: privateSprint })).toBeNull();
+    const upd = await withUser(bob, (db) => db.query("update public.share_reports set title = 'x' where slug = $1", [slug]));
+    const del = await withUser(bob, (db) => db.query("delete from public.share_reports where slug = $1", [slug]));
+    expect([upd.rowCount, del.rowCount]).toEqual([0, 0]);
+  });
+
+  it("serves the snapshot and a roadmap without notes, stars or timestamps", async () => {
+    const [snap] = (await app("select * from public.share_report($1)", [slug])).rows;
+    expect(snap).toMatchObject({ slug, sprint_id: privateSprint, title: "Private" });
+    expect((await app("select * from public.share_report_for_sprint($1)", [privateSprint])).rows[0].slug).toBe(slug);
+    const roadmap = (await app("select * from public.shared_roadmap($1)", [slug])).rows;
+    expect(roadmap.map((p) => p.done)).toEqual([true, false, false]);
+    for (const col of ["notes", "starred", "done_at", "id", "user_id"]) expect(roadmap[0]).not.toHaveProperty(col);
+  });
+
+  it("clones idempotently for others, returns the source to its owner, and bumps copy_count", async () => {
+    await expect(withUser("", () => Promise.resolve())).rejects.toThrow();
+    await expect(app("select public.clone_shared_sprint($1)", [slug])).rejects.toThrow(/permission denied|Not signed in/);
+    await expect(run(bob, "cloneSharedSprint", { slug: "nope-000000" })).rejects.toThrow("no longer active");
+
+    const copy = await run<string>(bob, "cloneSharedSprint", { slug });
+    expect(await run<string>(bob, "cloneSharedSprint", { slug })).toBe(copy);
+    expect(await run<string>(alice, "cloneSharedSprint", { slug })).toBe(privateSprint);
+
+    const { sprint, problems } = await run(bob, "getSprint", { id: copy });
+    expect(sprint).toMatchObject({ user_id: bob, copied_from: privateSprint, visibility: "private" });
+    expect(problems.every((p: { done_at: unknown; notes: string; starred: boolean }) => !p.done_at && !p.notes && !p.starred)).toBe(true);
+    expect((await run(alice, "getSprint", { id: privateSprint })).sprint.copy_count).toBe(1);
+  });
+
+  it("stops working everywhere once deleted", async () => {
+    await withUser(alice, (db) => db.query("delete from public.share_reports where slug = $1", [slug]));
+    expect((await app("select * from public.share_report($1)", [slug])).rows).toEqual([]);
+    expect((await app("select * from public.shared_roadmap($1)", [slug])).rows).toEqual([]);
+    await expect(run(carol, "cloneSharedSprint", { slug })).rejects.toThrow("no longer active");
+  });
+});
+
 describe("groups, reactions and nudges", () => {
   let groupId: string;
 

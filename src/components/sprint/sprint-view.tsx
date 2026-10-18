@@ -18,6 +18,9 @@ import { applyFilters, DEFAULT_FILTERS, facets as getFacets, isFiltering, matche
 import { setPaletteContext } from "@/lib/palette-store";
 import { buildCalendar, currentPlanDay, makeSprintForDay, shiftBacklog, workingDay, type ScheduleConfig } from "@/lib/schedule";
 import type { Problem } from "@/lib/types";
+import { isVivaEnabled } from "@/hooks/use-recall";
+import { isTheory, pickRecall } from "@/lib/recall/select";
+import { DailyRecall } from "./daily-recall";
 import { FilterBar } from "./filter-bar";
 import { MoveDialog } from "./move-dialog";
 import { NotesDrawer } from "./notes-drawer";
@@ -28,6 +31,7 @@ import { SprintActionsProvider, type SprintActions } from "./sprint-context";
 import { SprintHeader } from "./sprint-header";
 import { TableView } from "./table-view";
 import { TimelineView } from "./timeline-view";
+import { VivaDialog } from "./viva-dialog";
 
 const scrollToProblem = (id: string) =>
   setTimeout(() => document.querySelector(`[data-problem-id="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 60);
@@ -127,9 +131,32 @@ export function SprintView({ id }: { id: string }) {
     toast.success(`Shifted ${changes.length} problems`, { description: "Your plan now starts from today." });
   }, [cur, problems, sprintFor, m]);
 
+  // Daily Recall warmup: 1-2 problems solved 7/14/30 days ago (or starred), quizzed from your own notes.
+  const todayIso = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const recall = useMemo(() => pickRecall(problems, todayIso), [problems, todayIso]);
+
+  // Theory viva: marking a DBMS/OOPS/OS/CN topic done can first run a 2-question check. Un-marking stays immediate.
+  const [vivaId, setVivaId] = useState<string | null>(null);
+  const toggleDone = useCallback(
+    (p: Problem) => {
+      if (!p.done_at && isTheory(p) && isVivaEnabled(id)) setVivaId(p.id);
+      else m.toggleDone(p);
+    },
+    [id, m],
+  );
+  const completeViva = useCallback(
+    (p: Problem, { star }: { star: boolean }) => {
+      setVivaId(null);
+      const latest = byId.get(p.id) ?? p;
+      if (!latest.done_at) m.toggleDone(latest);
+      if (star && !latest.starred) m.toggleStar(latest);
+    },
+    [byId, m],
+  );
+
   const actions: SprintActions = useMemo(
     () => ({
-      toggleDone: m.toggleDone,
+      toggleDone,
       toggleStar: m.toggleStar,
       openNotes: (p) => setNotesId(p.id),
       openMove: (p) => setMoveId(p.id),
@@ -141,7 +168,7 @@ export function SprintView({ id }: { id: string }) {
       currentDay: cur?.day ?? null,
       peersFor,
     }),
-    [m.toggleDone, m.toggleStar, moveToDay, focus, focusedId, filters, dateFor, cur, peersFor],
+    [toggleDone, m.toggleStar, moveToDay, focus, focusedId, filters, dateFor, cur, peersFor],
   );
 
   // Keyboard navigation over the visible list.
@@ -157,7 +184,7 @@ export function SprintView({ id }: { id: string }) {
     k: () => step(-1),
     ArrowDown: () => step(1),
     ArrowUp: () => step(-1),
-    x: () => focused && m.toggleDone(focused),
+    x: () => focused && toggleDone(focused),
     s: () => focused && m.toggleStar(focused),
     n: () => focused && setNotesId(focused.id),
     Enter: () => focused && setNotesId(focused.id),
@@ -212,7 +239,20 @@ export function SprintView({ id }: { id: string }) {
   return (
     <SprintActionsProvider value={actions}>
       <div className="mx-auto flex max-w-5xl flex-col gap-5 p-4 sm:p-8">
-        <SprintHeader sprint={sprint} stats={headerStats} onSettings={() => setSettingsOpen(true)} onShift={shift} onJumpToday={jumpToday} />
+        <SprintHeader sprint={sprint} stats={headerStats} onSettings={() => setSettingsOpen(true)} onShift={shift} onJumpToday={jumpToday}>
+          {headerStats.today && recall.length > 0 && (
+            <DailyRecall
+              sprintId={id}
+              today={todayIso}
+              candidates={recall}
+              onStar={(p) => {
+                const latest = byId.get(p.id) ?? p;
+                if (!latest.starred) m.toggleStar(latest);
+              }}
+              onOpenNotes={(p) => setNotesId(p.id)}
+            />
+          )}
+        </SprintHeader>
         <div className="sticky top-0 z-20 -mx-4 border-b bg-background/85 px-4 py-3 backdrop-blur max-md:top-13 sm:-mx-8 sm:px-8">
           <div className="flex items-start gap-2">
             <div className="flex-1">
@@ -261,6 +301,7 @@ export function SprintView({ id }: { id: string }) {
         currentDay={cur?.day ?? null}
       />
       <SettingsDialog sprint={sprint} open={settingsOpen} onOpenChange={setSettingsOpen} onSave={m.updateSprint} />
+      <VivaDialog problem={vivaId ? (byId.get(vivaId) ?? null) : null} onClose={() => setVivaId(null)} onComplete={completeViva} />
     </SprintActionsProvider>
   );
 }
