@@ -7,6 +7,10 @@ import type { GenerateRequest, GenerateResult } from "@/lib/generate/schema";
 import { MAX_NOTES, type ReviewProblem, type ReviewResponse } from "@/lib/review/schema";
 import { MAX_RECALL_NOTES, type RecallProblem, type RecallResponse, type VivaResponse } from "@/lib/recall/schema";
 import type { ShareReportResponse } from "@/lib/share/schema";
+import type { CoachPlan } from "@/lib/coach/plan";
+
+export type { CoachPlan } from "@/lib/coach/plan";
+export type { CoachStrategy } from "@/lib/coach/planner";
 
 /** Calls a server operation (`src/lib/db/ops.ts`) as the signed-in user. Throws with the server's message. */
 async function rpc<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -224,6 +228,22 @@ async function postAi<T>(path: string, payload: unknown, signal?: AbortSignal): 
   const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
   if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
   return body.data as T;
+}
+
+/**
+ * Asks the backlog coach for a proposed reschedule. Nothing is saved; apply `changes` with `reschedule` after approval.
+ * The server loads the sprint itself and sends Gemini only summary statistics.
+ */
+export async function coachPlan(sprintId: string, today: string): Promise<CoachPlan> {
+  const res = await fetch("/api/ai/coach", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ sprintId, today }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { data?: CoachPlan; error?: string };
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body.data as CoachPlan;
 }
 
 /** Saves the theme accent on your account. */

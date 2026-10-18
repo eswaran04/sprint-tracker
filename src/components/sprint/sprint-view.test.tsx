@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   aiFilters: vi.fn(),
   recallQuestion: vi.fn(),
   vivaQuestions: vi.fn(),
+  coachPlan: vi.fn(() => new Promise(() => {})),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -256,5 +257,49 @@ describe("SprintView", () => {
 
     await user.click(screen.getByRole("button", { name: "Undo" }));
     await waitFor(() => expect(screen.queryByText("2 matches")).not.toBeInTheDocument());
+  });
+
+  it("opens the AI search from a ?ai=search deep link", async () => {
+    renderWithProviders(<SprintView id="s1" />, { searchParams: "?ai=search" });
+    const box = await screen.findByRole("textbox", { name: "Describe what you want to see" });
+    await waitFor(() => expect(box).toHaveFocus());
+  });
+
+  it("flags Smart reschedule as New until it is used", async () => {
+    localStorage.removeItem("aibc:feature-seen:smart-reschedule");
+    const user = userEvent.setup();
+    renderWithProviders(<SprintView id="s1" />);
+    const btn = await screen.findByRole("button", { name: /Smart reschedule/ });
+    expect(within(btn).getByText("New")).toBeInTheDocument();
+    await user.click(btn);
+    await waitFor(() => expect(within(btn).queryByText("New")).not.toBeInTheDocument());
+  });
+
+  it("opens the code & intuition reviewer on the working-day problem from ?ai=review", async () => {
+    localStorage.removeItem("aibc:feature-seen:code-review");
+    renderWithProviders(<SprintView id="s1" />, { searchParams: "?ai=review" });
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Largest Element" })).toBeInTheDocument();
+    const analyze = within(dialog).getByRole("button", { name: /Analyze note/ });
+    expect(within(analyze).getByText("New")).toBeInTheDocument();
+  });
+
+  it("flags the Daily Recall warmup as AI / New until answered", async () => {
+    localStorage.clear();
+    api.getSprint.mockResolvedValue({
+      sprint,
+      problems: [
+        mkProblem({ id: "old", name: "LRU Cache", day_no: 1, original_day_no: 1, done_at: subDays(new Date(), 7).toISOString(), notes: "DLL + map" }),
+        mkProblem({ id: "new", name: "Two Sum", day_no: 3, original_day_no: 3 }),
+      ],
+    });
+    api.recallQuestion.mockResolvedValue({ mode: "recall", ai: true, recall: { intro: "i", question: "Why a DLL?", hint: "h", answer: "a" } });
+    const user = userEvent.setup();
+    renderWithProviders(<SprintView id="s1" />, { searchParams: "?ai=warmup" });
+    const region = await screen.findByRole("region", { name: "Daily Recall" });
+    expect(within(region).getByText("New")).toBeInTheDocument();
+    await user.click(await within(region).findByRole("button", { name: /Reveal answer/ }));
+    await user.click(within(region).getByRole("button", { name: /Nailed it/ }));
+    await waitFor(() => expect(within(region).queryByText("New")).not.toBeInTheDocument());
   });
 });

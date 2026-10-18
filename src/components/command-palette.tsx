@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Compass, FolderKanban, Moon, Plus, Sparkles, Users, Zap } from "lucide-react";
+import { Check, Compass, FolderKanban, Moon, Plus, Users, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,6 +13,7 @@ import { useSprints } from "@/hooks/use-sprints";
 import { ACCENTS, swatch } from "@/lib/accents";
 import { setPaletteOpen, usePaletteContext, usePaletteOpen } from "@/lib/palette-store";
 import { DifficultyDot } from "@/components/sprint/chips";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 
 export const openCommandPalette = () => setPaletteOpen(true);
 
@@ -27,6 +28,8 @@ export function CommandPalette() {
   const [search, setSearch] = useState("");
   const aiText = search.trim();
   const showAi = Boolean(ctx?.aiFilter) && aiText.split(/\s+/).length >= 3;
+  const aiActions = ctx?.actions.filter((a) => a.ai) ?? [];
+  const otherActions = ctx?.actions.filter((a) => !a.ai) ?? [];
 
   // Start fresh each time the palette opens (state adjusted during render, not in an effect).
   const [wasOpen, setWasOpen] = useState(open);
@@ -61,14 +64,28 @@ export function CommandPalette() {
             <CommandGroup heading="AI" forceMount>
               {/* forceMount keeps cmdk's fuzzy match from hiding it; the value makes it rank first. */}
               <CommandItem forceMount value={`ai-filter ${aiText}`} onSelect={run(() => void ctx.aiFilter!(aiText))}>
-                <Sparkles className="text-primary" />
+                <AiSparkle />
                 <span className="truncate">Filter with AI: “{aiText}”</span>
               </CommandItem>
             </CommandGroup>
           )}
-          {ctx && ctx.actions.length > 0 && (
+          {!showAi && (
+            <CommandGroup heading="AI">
+              {aiActions.map((a) => (
+                <CommandItem key={a.id} value={`ai ${a.label}`} keywords={["ai", "smart", "natural language"]} onSelect={run(a.run)}>
+                  <AiSparkle /> <span className="ai-text font-medium">{a.label}</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              ))}
+              <CommandItem value="ai generate sprint sheet from a goal" keywords={["ai", "generate", "plan", "natural language"]} onSelect={run(() => router.push("/app/import"))}>
+                <AiSparkle /> <span className="ai-text font-medium">Generate a sheet from your goal</span>
+                <AiBadge className="ml-auto" />
+              </CommandItem>
+            </CommandGroup>
+          )}
+          {otherActions.length > 0 && (
             <CommandGroup heading="Actions">
-              {ctx.actions.map((a) => (
+              {otherActions.map((a) => (
                 <CommandItem key={a.id} onSelect={run(a.run)}>
                   <Zap /> {a.label}
                   {a.shortcut && <CommandShortcut>{a.shortcut}</CommandShortcut>}

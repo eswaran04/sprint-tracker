@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ProgressRing } from "@/components/progress-ring";
 import { GroupButton } from "@/components/groups/group-button";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import type { Sprint } from "@/lib/types";
 
 export interface HeaderStats {
@@ -19,12 +21,15 @@ export interface HeaderStats {
   shiftCount: number;
 }
 
-export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday, children }: {
+export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday, onCoach, children }: {
   sprint: Sprint; stats: HeaderStats; onSettings: () => void; onShift: () => Promise<unknown>; onJumpToday: () => void;
+  /** Opens the Smart reschedule coach; omitted when the sprint has no start date. */
+  onCoach?: () => void;
   /** Rendered between the title row and the Today banner (e.g. the Daily Recall warmup). */
   children?: React.ReactNode;
 }) {
   const [confirm, setConfirm] = useState(false);
+  const [coachSeen, markCoachSeen] = useFeatureSeen("smart-reschedule");
   const pct = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
 
   return (
@@ -105,10 +110,22 @@ export function SprintHeader({ sprint, stats, onSettings, onShift, onJumpToday, 
             ) : (
               <span className="text-basic">On track ✓</span>
             )}
-            {stats.overdue > 0 && (
-              <Button size="sm" onClick={() => setConfirm(true)} className="ml-auto rounded-lg">
-                <FastForward /> Shift backlog
-              </Button>
+            {(stats.overdue > 0 || onCoach) && (
+              <div className="ml-auto flex items-center gap-2">
+                {onCoach && (
+                  <Button size="sm" variant="outline" id="smart-reschedule"
+                    onClick={() => { markCoachSeen(); onCoach(); }}
+                    className="ai-border ai-glow relative rounded-lg">
+                    <AiSparkle className="size-3.5" /> <span className="ai-text font-semibold">Smart reschedule</span>
+                    {!coachSeen && <AiBadge className="absolute -top-2 -right-2 shadow-sm" />}
+                  </Button>
+                )}
+                {stats.overdue > 0 && (
+                  <Button size="sm" onClick={() => setConfirm(true)} className="rounded-lg">
+                    <FastForward /> Shift backlog
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>

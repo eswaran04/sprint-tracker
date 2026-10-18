@@ -1,12 +1,14 @@
 "use client";
 
-import { Check, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import { Check, ExternalLink, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { analyzeNote } from "@/lib/api";
 import { stripReview } from "@/lib/review/blocks";
 import { renderReview, upsertReview } from "@/lib/review/format";
@@ -54,9 +56,11 @@ function NotesEditor({ problem, onSave }: { problem: Problem; onSave: (notes: st
   // Drop a slow review if the drawer closes or switches problem (this editor is keyed by problem id).
   useEffect(() => () => inflight.current?.abort(), []);
 
+  const [reviewSeen, markReviewSeen] = useFeatureSeen("code-review");
   const canAnalyze = stripReview(value).length > 0 && !analyzing;
   const analyze = async () => {
     if (!canAnalyze) return;
+    markReviewSeen();
     const ctrl = new AbortController();
     inflight.current = ctrl;
     setAnalyzing(true);
@@ -110,10 +114,12 @@ function NotesEditor({ problem, onSave }: { problem: Problem; onSave: (notes: st
           variant="outline"
           onClick={analyze}
           disabled={!canAnalyze}
-          title="Review complexity, edge cases and missing pattern tags"
+          title="AI code & intuition review: complexity, edge cases and missing pattern tags"
+          className="ai-border ai-glow relative rounded-lg"
         >
-          {analyzing ? <Loader2 className="animate-spin" /> : <Sparkles />}
-          {analyzing ? "Analyzing…" : "Analyze note"}
+          {analyzing ? <Loader2 className="animate-spin text-[var(--ai-2)]" /> : <AiSparkle className="size-3.5" />}
+          <span className="ai-text font-semibold">{analyzing ? "Analyzing…" : "Analyze note"}</span>
+          {!reviewSeen && !analyzing && <AiBadge className="pointer-events-none absolute -top-2 -right-2 shadow-sm" />}
         </Button>
       </div>
       <TabsContent value="write" className="min-h-0 flex-1">

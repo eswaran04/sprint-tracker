@@ -1,4 +1,4 @@
-import { GoalGenerator } from "@/components/import/goal-generator";
+import { GoalGenerator, GoalTabLabel } from "@/components/import/goal-generator";
 import { ImportWizard } from "@/components/import/import-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -11,7 +11,7 @@ export default function ImportPage() {
       </p>
       <Tabs defaultValue="goal" className="gap-6">
         <TabsList>
-          <TabsTrigger value="goal">Describe your goal</TabsTrigger>
+          <TabsTrigger value="goal"><GoalTabLabel /></TabsTrigger>
           <TabsTrigger value="file">Upload file</TabsTrigger>
         </TabsList>
         <TabsContent value="goal">
