@@ -15,6 +15,10 @@
     "emulators": "firebase emulators:start --only auth",
     "test:db": "node --env-file-if-exists=.env.local node_modules/.bin/vitest run --config vitest.db.config.mts",
     "test:ai": "node --env-file-if-exists=.env.local node_modules/.bin/vitest run --config vitest.ai.config.mts",
+    "bench": "vitest bench --run --config vitest.bench.config.mts && node scripts/bench-report.mjs",
+    "bench:baseline": "vitest bench --run --config vitest.bench.config.mts && node scripts/bench-report.mjs --save-baseline",
+    "bench:check": "vitest bench --run --config vitest.bench.config.mts && node scripts/bench-report.mjs --check",
+    "bench:quality": "vitest run --config vitest.quality.config.mts && node scripts/bench-report.mjs",
     "embed:sheets": "node --env-file-if-exists=.env.local scripts/embed-sheets.mjs"
   },
   "dependencies": {
@@ -64,11 +68,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.1",
+    "autocannon": "^8.0.0",
     "eslint": "^9",
     "eslint-config-next": "^16.3.8",
     "firebase-tools": "^14.23.0",
     "jiti": "^2.7.0",
     "jsdom": "^29.1.1",
+    "playwright": "^1.64.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^5.0.3"

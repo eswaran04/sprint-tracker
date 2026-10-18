@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { VisitorAnalytics } from "@/components/analytics";
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" data-accent={DEFAULT_ACCENT} suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: accentInitScript }} />
+        <Script id="accent-init" strategy="beforeInteractive">
+          {accentInitScript}
+        </Script>
       </head>
       <body className="min-h-full">
         <Providers>{children}</Providers>
