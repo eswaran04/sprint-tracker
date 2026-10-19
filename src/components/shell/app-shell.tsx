@@ -7,6 +7,7 @@ import { Logo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ThemeButton } from "@/components/theme-picker";
+import { AiTourModal } from "@/components/ai-tour/ai-tour-modal";
 import { AccentSync } from "./accent-sync";
 import { NudgeInbox } from "./nudge-inbox";
 import { SessionUserProvider } from "./session-user";
@@ -66,6 +67,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
         </div>
         <CommandPalette />
         <AccentSync accent={user.accent} />
+        <AiTourModal />
       </div>
     </SessionUserProvider>
   );

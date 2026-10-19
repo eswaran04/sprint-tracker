@@ -18,6 +18,8 @@ const uid = z.string().min(1).max(128);
 const day = z.iso.date();
 const str = (max: number) => z.string().max(max);
 const me = z.object({ name: str(200), avatar: str(2000).nullable() });
+/** Optional nudge text: trimmed first, "" → null (matches `send_nudge`; JS length is ≥ Postgres char_length). */
+const nudgeMessage = z.string().trim().max(140).nullable().optional().transform((v) => v || null);
 
 const sprintPatch = z
   .object({
@@ -95,14 +97,19 @@ export const ops = {
 
   createSprint: op(
     z.object({
-      input: z.object({ title: str(200), start_date: day.nullable(), skip_weekends: z.boolean() }),
+      input: z.object({
+        title: str(200),
+        start_date: day.nullable(),
+        skip_weekends: z.boolean(),
+        rest_days: z.array(day).max(2000).optional(),
+      }),
       rows: z.array(problemInput).max(20_000),
     }),
     async (db, { input, rows }) => {
       const sprint = await one(
         db,
-        "insert into public.sprints (title, start_date, skip_weekends) values ($1, $2, $3) returning *",
-        [input.title, input.start_date, input.skip_weekends],
+        "insert into public.sprints (title, start_date, skip_weekends, rest_days) values ($1, $2, $3, coalesce($4::date[], '{}')) returning *",
+        [input.title, input.start_date, input.skip_weekends, input.rest_days ?? null],
       );
       if (rows.length) {
         await db.query(
@@ -159,6 +166,29 @@ export const ops = {
 
   copyPublicSheet: op(z.object({ id }), (db, { id }) => scalar(db, "select public.copy_public_sheet($1) as v", [id])),
 
+  /** Nearest public sheets by embedding (empty until the sheet has been embedded). */
+  similarSheets: op(z.object({ id, k: z.number().int().min(1).max(24).default(6) }), (db, { id, k }) =>
+    all(db, "select * from public.similar_sheets($1, $2)", [id, k]),
+  ),
+
+  /** Public sheets closest to the caller's saved goal (empty without a goal). */
+  recommendedSheets: op(z.object({ k: z.number().int().min(1).max(24).default(6) }).strict(), (db, { k }) =>
+    all(db, "select * from public.recommended_sheets($1)", [k]),
+  ),
+
+  /** The caller's readiness report for one sprint, or null (RLS: owner only). */
+  getMyShareReport: op(z.object({ id }), (db, { id }) =>
+    one(
+      db,
+      `select slug, sprint_id, title, readiness, scout, stats, to_json(updated_at) #>> '{}' as updated_at
+         from public.share_reports where sprint_id = $1`,
+      [id],
+    ),
+  ),
+
+  /** Copies a shared sprint (by share slug) into the caller's account; idempotent. Returns the sprint id. */
+  cloneSharedSprint: op(z.object({ slug: str(64) }), (db, { slug }) => scalar(db, "select public.clone_shared_sprint($1) as v", [slug])),
+
   listMyGroups: op(none, (db) => all(db, "select * from public.my_groups()")),
 
   getGroup: op(z.object({ id }), async (db, { id }) => {
@@ -195,8 +225,8 @@ export const ops = {
     return null;
   }),
 
-  sendNudge: op(z.object({ groupId: id, targetUser: uid }), async (db, a) => {
-    await db.query("select public.send_nudge($1, $2)", [a.groupId, a.targetUser]);
+  sendNudge: op(z.object({ groupId: id, targetUser: uid, message: nudgeMessage }), async (db, a) => {
+    await db.query("select public.send_nudge($1, $2, $3)", [a.groupId, a.targetUser, a.message]);
     return null;
   }),
 

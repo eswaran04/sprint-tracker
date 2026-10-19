@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -14,20 +15,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DifficultyChip } from "@/components/sprint/chips";
 import { FacetSelect } from "@/components/sprint/facet-select";
 import { useSessionUser } from "@/components/shell/session-user";
-import { useGroupActivity, useGroupProgress, useToggleReaction } from "@/hooks/use-groups";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
+import { useGroupActivity, useGroupDigest, useGroupProgress, useToggleReaction } from "@/hooks/use-groups";
 import { useSprint } from "@/hooks/use-sprint";
 import { deleteGroup, leaveGroup, removeMember, sendNudge } from "@/lib/api";
 import { applyFilters, DEFAULT_FILTERS, facets as getFacets, isFiltering, type Filters } from "@/lib/filters";
+import { nudgeSuggestions } from "@/lib/digest/nudge-suggestions";
 import { problemKey, type LeaderboardRow } from "@/lib/groups";
 import type { GroupMember, Problem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ActivityFeed } from "./activity-feed";
 import { CopyInvite } from "./group-button";
 import { MemberAvatar, PeopleStack } from "./member-avatar";
+import { NudgeComposer } from "./nudge-composer";
+import { WeeklyDigest } from "./weekly-digest";
 
-function Leaderboard({ groupId, board, total, me, isOwner, nudged, onRemove, onNudge }: {
+function Leaderboard({ groupId, board, total, me, isOwner, nudged, suggestionsFor, onRemove, onNudge }: {
   groupId: string; board: LeaderboardRow[]; total: number; me?: string; isOwner: boolean; nudged: Set<string>;
-  onRemove: (m: GroupMember) => void; onNudge: (m: GroupMember) => void;
+  suggestionsFor: (m: GroupMember) => string[];
+  onRemove: (m: GroupMember) => void; onNudge: (m: GroupMember, message: string | null) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border bg-card/40">
@@ -63,19 +69,23 @@ function Leaderboard({ groupId, board, total, me, isOwner, nudged, onRemove, onN
               <span className={cn("flex w-10 items-center justify-end gap-0.5 text-sm tabular-nums", r.streak ? "text-core" : "text-muted-foreground/50")} title="Current streak">
                 <Flame className="size-3.5" /> {r.streak}
               </span>
-              {r.member.user_id !== me && r.doneToday === 0 && (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground"
-                  disabled={nudged.has(r.member.user_id)}
-                  onClick={() => onNudge(r.member)}
-                  aria-label={`${nudged.has(r.member.user_id) ? "Nudged" : "Nudge"} ${r.member.display_name}`}
-                  title={nudged.has(r.member.user_id) ? "Nudge sent" : "Nudge to get going today"}
-                >
-                  {nudged.has(r.member.user_id) ? <Check /> : <Bell />}
+              {r.member.user_id !== me && r.doneToday === 0 && (nudged.has(r.member.user_id) ? (
+                <Button variant="ghost" size="icon-xs" className="text-muted-foreground" disabled aria-label={`Nudged ${r.member.display_name}`} title="Nudge sent">
+                  <Check />
                 </Button>
-              )}
+              ) : (
+                <NudgeComposer member={r.member} suggestions={suggestionsFor(r.member)} onSend={(msg) => onNudge(r.member, msg)}>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground"
+                    aria-label={`Nudge ${r.member.display_name}`}
+                    title="Nudge to get going today"
+                  >
+                    <Bell />
+                  </Button>
+                </NudgeComposer>
+              ))}
               {isOwner && r.member.user_id !== me && (
                 <Button variant="ghost" size="icon-xs" className="text-muted-foreground opacity-0 group-hover:opacity-100 max-md:opacity-100" onClick={() => onRemove(r.member)} aria-label={`Remove ${r.member.display_name}`}>
                   <UserMinus />
@@ -185,6 +195,9 @@ export function GroupView({ id }: { id: string }) {
   const g = useGroupProgress(id);
   const activity = useGroupActivity(id, me);
   const clap = useToggleReaction(id, me);
+  const digest = useGroupDigest(id);
+  const [digestSeen, markDigestSeen] = useFeatureSeen("group-digest");
+  const hasDigest = Boolean(digest.data && (digest.data.lines.length || digest.data.pairUp.length));
   const [nudged, setNudged] = useState<Set<string>>(new Set());
   // Kept after close so the dialog's copy doesn't blank out mid-animation.
   const [confirming, setConfirming] = useState<{ kind: "delete" } | { kind: "leave" } | { kind: "remove"; member: GroupMember } | null>(null);
@@ -206,11 +219,24 @@ export function GroupView({ id }: { id: string }) {
     qc.invalidateQueries({ queryKey: ["group-progress", id] }),
     qc.invalidateQueries({ queryKey: ["group-activity", id] }),
     qc.invalidateQueries({ queryKey: ["group-reactions", id] }),
+    qc.invalidateQueries({ queryKey: ["group-digest", id] }),
   ]);
   const action = useMutation({
     mutationFn: (fn: () => Promise<void>) => fn(),
     onError: (e) => toast.error("Something went wrong", { description: e.message }),
   });
+
+  const onNudge = (m: GroupMember, message: string | null) =>
+    action.mutate(async () => {
+      await sendNudge(id, m.user_id, message);
+      setNudged((s) => new Set(s).add(m.user_id));
+      toast.success(`Nudged ${m.display_name}`);
+    });
+  const suggestionsFor = (m: GroupMember, problem?: string) => {
+    const row = g.board.find((r) => r.member.user_id === m.user_id);
+    const pair = problem ?? digest.data?.pairUp.find((p) => p.partner.userId === m.user_id)?.problem.name;
+    return nudgeSuggestions({ name: m.display_name, streak: row?.streak, doneToday: row?.doneToday }, pair);
+  };
 
   if (g.isLoading || (mySprintId && sprint.isLoading)) {
     return (
@@ -282,21 +308,45 @@ export function GroupView({ id }: { id: string }) {
             <h1 className="text-2xl font-semibold tracking-tight">{g.group.name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{g.members.length} member{g.members.length === 1 ? "" : "s"} · {total} problems</p>
           </div>
-          {isOwner ? (
-            <Button variant="ghost" className="text-destructive" onClick={() => ask({ kind: "delete" })}>
-              <Trash2 /> Delete group
-            </Button>
-          ) : (
-            <Button variant="ghost" onClick={() => ask({ kind: "leave" })}>
-              <LogOut /> Leave
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {hasDigest && (
+              <Button
+                variant="outline"
+                className="ai-border ai-glow relative rounded-lg"
+                onClick={() => {
+                  markDigestSeen();
+                  document.getElementById("weekly-digest")?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+                }}
+              >
+                <AiSparkle className="size-3.5" /> <span className="ai-text font-semibold">Weekly digest</span>
+                {!digestSeen && <AiBadge className="pointer-events-none absolute -top-2 -right-2 shadow-sm" />}
+              </Button>
+            )}
+            {isOwner ? (
+              <Button variant="ghost" className="text-destructive" onClick={() => ask({ kind: "delete" })}>
+                <Trash2 /> Delete group
+              </Button>
+            ) : (
+              <Button variant="ghost" onClick={() => ask({ kind: "leave" })}>
+                <LogOut /> Leave
+              </Button>
+            )}
+          </div>
         </div>
         <div className="grid gap-1.5">
           <p className="text-xs font-medium text-muted-foreground">Invite link</p>
           <CopyInvite code={g.group.invite_code} />
         </div>
       </header>
+
+      <WeeklyDigest
+        digest={digest.data}
+        isLoading={digest.isLoading}
+        members={g.members}
+        nudged={nudged}
+        suggestionsFor={suggestionsFor}
+        onNudge={onNudge}
+      />
 
       <Leaderboard
         groupId={id}
@@ -305,13 +355,8 @@ export function GroupView({ id }: { id: string }) {
         me={me}
         isOwner={isOwner}
         nudged={nudged}
-        onNudge={(m) =>
-          action.mutate(async () => {
-            await sendNudge(id, m.user_id);
-            setNudged((s) => new Set(s).add(m.user_id));
-            toast.success(`Nudged ${m.display_name}`);
-          })
-        }
+        suggestionsFor={suggestionsFor}
+        onNudge={onNudge}
         onRemove={(member) => ask({ kind: "remove", member })}
       />
 

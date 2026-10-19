@@ -1,13 +1,18 @@
 "use client";
 
-import { ArrowDownUp, CalendarRange, Rows3, Search, X } from "lucide-react";
+import { ArrowDownUp, CalendarRange, Loader2, Rows3, Search, X } from "lucide-react";
+import { useState } from "react";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 import { Button } from "@/components/ui/button";
+import { useFeatureSeen } from "@/hooks/use-feature-seen";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatSubject } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { DEFAULT_FILTERS, isFiltering, STATUSES, type Facet, type Filters } from "@/lib/filters";
+import { MAX_QUERY_LENGTH } from "@/lib/ai/nl-filters";
 import { FacetSelect } from "./facet-select";
 import { SavedFilters } from "./saved-filters";
 
@@ -24,28 +29,100 @@ export interface FilterBarProps {
   view: "timeline" | "table";
   setView: (v: "timeline" | "table") => void;
   resultCount: number;
+  /** Enables the AI toggle in the search box: Enter sends the sentence here instead of setting `q`. */
+  onAiQuery?: (text: string) => Promise<void> | void;
+  aiPending?: boolean;
+  /** Optional controlled AI mode (lets navigation open the AI search); uncontrolled when omitted. */
+  aiMode?: boolean;
+  onAiModeChange?: (on: boolean) => void;
 }
 
-export function FilterBar({ filters, setFilters, facets, statusCounts, view, setView, resultCount }: FilterBarProps) {
+export function FilterBar({
+  filters, setFilters, facets, statusCounts, view, setView, resultCount, onAiQuery, aiPending = false,
+  aiMode: aiModeProp, onAiModeChange,
+}: FilterBarProps) {
   const active = isFiltering(filters);
+  const [aiModeState, setAiModeState] = useState(false);
+  const aiMode = aiModeProp ?? aiModeState;
+  const setAiMode = (next: boolean | ((v: boolean) => boolean)) => {
+    const v = typeof next === "function" ? next(aiMode) : next;
+    setAiModeState(v);
+    onAiModeChange?.(v);
+  };
+  const [aiText, setAiText] = useState("");
+  const [aiSeen, markAiSeen] = useFeatureSeen("ai-search");
+  const ai = aiMode && Boolean(onAiQuery);
+  const submitAi = async () => {
+    if (!onAiQuery || !aiText.trim() || aiPending) return;
+    markAiSeen();
+    await onAiQuery(aiText);
+  };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1 sm:max-w-sm">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            id="problem-search"
-            value={filters.q}
-            onChange={(e) => setFilters({ q: e.target.value })}
-            placeholder="Search problems, topics, companies…"
-            className="h-8 rounded-lg pr-8 pl-8"
-          />
-          {filters.q ? (
-            <button onClick={() => setFilters({ q: "" })} className="absolute top-1/2 right-2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear search">
-              <X className="size-3.5" />
-            </button>
+          {ai ? (
+            aiPending ? (
+              <Loader2 className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 animate-spin text-primary" aria-label="Interpreting" />
+            ) : (
+              <AiSparkle className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-3.5 -translate-y-1/2" />
+            )
           ) : (
-            <kbd className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded border bg-muted px-1 font-mono text-[10px] text-muted-foreground max-sm:hidden">/</kbd>
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          )}
+          {ai ? (
+            <Input
+              id="problem-search"
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void submitAi();
+                } else if (e.key === "Escape") {
+                  setAiMode(false);
+                }
+              }}
+              maxLength={MAX_QUERY_LENGTH}
+              disabled={aiPending}
+              autoFocus
+              aria-label="Describe what you want to see"
+              placeholder="Ask in plain words — e.g. Amazon sliding window I starred…"
+              className="ai-border ai-glow h-8 rounded-lg pr-14 pl-8 focus-visible:border-transparent"
+            />
+          ) : (
+            <Input
+              id="problem-search"
+              value={filters.q}
+              onChange={(e) => setFilters({ q: e.target.value })}
+              placeholder="Search problems, topics, companies…"
+              className={cn("h-8 rounded-lg pl-8", onAiQuery ? "pr-14" : "pr-8")}
+            />
+          )}
+          <span className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground", onAiQuery ? "right-8" : "right-2")}>
+            {!ai && filters.q ? (
+              <button onClick={() => setFilters({ q: "" })} className="flex hover:text-foreground" aria-label="Clear search">
+                <X className="size-3.5" />
+              </button>
+            ) : !ai ? (
+              <kbd className="pointer-events-none rounded border bg-muted px-1 font-mono text-[10px] max-sm:hidden">/</kbd>
+            ) : null}
+          </span>
+          {onAiQuery && (
+            <button
+              type="button"
+              onClick={() => setAiMode((v) => !v)}
+              aria-pressed={ai}
+              aria-label={ai ? "Switch to plain search" : "Filter with AI"}
+              title={ai ? "Plain search" : "Filter with AI"}
+              className={cn(
+                "absolute top-1/2 right-1.5 flex size-5.5 -translate-y-1/2 items-center justify-center rounded-md transition-all",
+                ai ? "bg-[color-mix(in_oklch,var(--ai-2),transparent_85%)]" : "hover:scale-110 hover:bg-muted",
+              )}
+            >
+              <AiSparkle className="size-3.5" />
+              {!aiSeen && !ai && <AiBadge label="AI" className="pointer-events-none absolute -top-2.5 -right-2 px-1 text-[8px]" />}
+            </button>
           )}
         </div>
         <Tabs value={filters.status} onValueChange={(v) => setFilters({ status: v as Filters["status"] })}>

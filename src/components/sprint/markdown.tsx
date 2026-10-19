@@ -1,6 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
+import { stripMarkers } from "@/lib/review/blocks";
 
 export function Markdown({ children }: { children: string }) {
   return (
@@ -10,7 +11,7 @@ export function Markdown({ children }: { children: string }) {
         rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{ a: (props) => <a {...props} target="_blank" rel="noreferrer" /> }}
       >
-        {children}
+        {stripMarkers(children)}
       </ReactMarkdown>
     </div>
   );
