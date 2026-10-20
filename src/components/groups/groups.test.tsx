@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
   groupReactions: vi.fn(),
   toggleReaction: vi.fn(),
   sendNudge: vi.fn(),
+  groupDigest: vi.fn(),
 }));
 vi.mock("@/lib/api", () => api);
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   ]);
   api.groupActivity.mockResolvedValue([]);
   api.groupReactions.mockResolvedValue([]);
+  api.groupDigest.mockResolvedValue(null);
   api.getSprint.mockResolvedValue({
     sprint: mkSprint({ id: "s-me", title: "DSA Prep" }),
     problems: [mkProblem({ id: "p1", name: "Two Sum" }), mkProblem({ id: "p2", name: "3 Sum" }), mkProblem({ id: "p3", name: "4 Sum" })],
@@ -162,19 +164,112 @@ describe("Nudges", () => {
   it("sends a nudge once and then shows it as sent", async () => {
     api.sendNudge.mockResolvedValue(undefined);
     renderWithProviders(withUser(<GroupView id="g1" />));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    await user.click(await screen.findByRole("button", { name: "Send without message" }));
 
-    expect(api.sendNudge).toHaveBeenCalledWith("g1", "k");
+    expect(api.sendNudge).toHaveBeenCalledWith("g1", "k", null);
     expect(await screen.findByRole("button", { name: "Nudged Kavin" })).toBeDisabled();
+  });
+
+  it("sends a typed message, or a suggested one", async () => {
+    api.sendNudge.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    await user.click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    const box = screen.getByRole("textbox", { name: "Message for Kavin" });
+    await user.type(box, "  LRU tonight?  ");
+    expect(screen.getByText("12/140")).toBeInTheDocument();
+    await user.click(send);
+    expect(api.sendNudge).toHaveBeenCalledWith("g1", "k", "LRU tonight?");
+  });
+
+  it("blocks messages over 140 characters", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    await user.click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    const box = screen.getByRole("textbox", { name: "Message for Kavin" });
+    await user.click(box);
+    await user.paste("x".repeat(141));
+    expect(screen.getByText("141/140")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("fills the box from a suggestion chip", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    await user.click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    const chips = within(screen.getByLabelText("Suggested messages")).getAllByRole("button");
+    expect(chips.length).toBeGreaterThan(0);
+    await user.click(chips[0]);
+    expect(screen.getByRole("textbox", { name: "Message for Kavin" })).toHaveValue(chips[0].textContent);
   });
 
   it("keeps the button available when the nudge fails", async () => {
     api.sendNudge.mockRejectedValue(new Error("You already nudged them today"));
+    const user = userEvent.setup();
     renderWithProviders(withUser(<GroupView id="g1" />));
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    await user.click(await screen.findByRole("button", { name: "Nudge Kavin" }));
+    await user.click(await screen.findByRole("button", { name: "Send without message" }));
 
     await waitFor(() => expect(api.sendNudge).toHaveBeenCalled());
     expect(screen.getByRole("button", { name: "Nudge Kavin" })).toBeEnabled();
+  });
+});
+
+describe("Weekly digest", () => {
+  const digest = {
+    headline: "Eswaran cleared Sprint 1!",
+    lines: ["Eswaran led the week with 2 solves.", "You have 1 problem behind plan."],
+    pairUp: [{ partner: { userId: "e", name: "Eswaran" }, problem: { key: "p2", name: "3 Sum", url: "https://x.test/3sum", difficulty: "Core" }, dueForMe: true }],
+    weekSolves: 2,
+    ai: true,
+  };
+
+  it("shows the AI digest above the leaderboard with pair-ups", async () => {
+    api.groupDigest.mockResolvedValue(digest);
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    const card = await screen.findByRole("region", { name: "Weekly digest" });
+    expect(within(card).getByRole("heading", { name: "Eswaran cleared Sprint 1!" })).toBeInTheDocument();
+    expect(within(card).getByText("AI")).toBeInTheDocument();
+    expect(within(card).getByText("You have 1 problem behind plan.")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "3 Sum" })).toHaveAttribute("href", "https://x.test/3sum");
+    expect(api.groupDigest).toHaveBeenCalledWith("g1", format(new Date(), "yyyy-MM-dd"));
+    // Eswaran solved today, so the leaderboard hides his bell, but the pair-up still offers a nudge.
+    expect(within(card).getByRole("button", { name: "Nudge Eswaran about 3 Sum" })).toBeInTheDocument();
+  });
+
+  it("nudges a pair-up partner with a message, then shows them as nudged", async () => {
+    api.groupDigest.mockResolvedValue(digest);
+    api.sendNudge.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    const card = await screen.findByRole("region", { name: "Weekly digest" });
+    await user.click(within(card).getByRole("button", { name: "Nudge Eswaran about 3 Sum" }));
+    const chip = within(screen.getByLabelText("Suggested messages")).getAllByRole("button")[0];
+    expect(chip).toHaveTextContent("3 Sum");
+    await user.click(chip);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(api.sendNudge).toHaveBeenCalledWith("g1", "e", chip.textContent);
+    expect(await within(card).findByText("Nudged")).toBeInTheDocument();
+  });
+
+  it("hides the AI badge for template digests and the card when empty", async () => {
+    api.groupDigest.mockResolvedValue({ ...digest, ai: false, pairUp: [] });
+    const { unmount } = renderWithProviders(withUser(<GroupView id="g1" />));
+    const card = await screen.findByRole("region", { name: "Weekly digest" });
+    expect(within(card).queryByText("AI")).not.toBeInTheDocument();
+    unmount();
+
+    api.groupDigest.mockResolvedValue(null);
+    renderWithProviders(withUser(<GroupView id="g1" />));
+    expect(await screen.findByRole("heading", { name: "Prep squad" })).toBeInTheDocument();
+    await waitFor(() => expect(api.groupDigest).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("region", { name: "Weekly digest" })).not.toBeInTheDocument();
   });
 });
 

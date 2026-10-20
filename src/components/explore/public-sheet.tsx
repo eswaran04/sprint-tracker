@@ -19,6 +19,7 @@ import type { Problem, PublicProblem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { EditSheetButton } from "./edit-sheet-dialog";
 import { DifficultyBar, MaangCoverage, OtherCompanies, OwnerLine } from "./sheet-meta";
+import { SimilarSheets } from "./similar-sheets";
 
 // Reuse the sprint filter/sort logic by giving catalogue rows empty progress.
 const asProblem = (p: PublicProblem): Problem => ({
@@ -228,6 +229,8 @@ export function PublicSheetView({ id }: { id: string }) {
           </div>
         </div>
       </header>
+
+      <SimilarSheets sheetId={sheet.id} />
 
       <Catalogue problems={problems} />
     </div>

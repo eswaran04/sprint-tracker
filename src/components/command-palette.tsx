@@ -2,8 +2,8 @@
 
 import { Check, Compass, FolderKanban, Moon, Plus, Users, Zap } from "lucide-react";
 import { useTheme } from "next-themes";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut,
 } from "@/components/ui/command";
@@ -12,7 +12,9 @@ import { useMyGroups } from "@/hooks/use-groups";
 import { useSprints } from "@/hooks/use-sprints";
 import { ACCENTS, swatch } from "@/lib/accents";
 import { setPaletteOpen, usePaletteContext, usePaletteOpen } from "@/lib/palette-store";
+import { openAiTour } from "@/lib/ai-tour-store";
 import { DifficultyDot } from "@/components/sprint/chips";
+import { AiBadge, AiSparkle } from "@/components/ui/ai-badge";
 
 export const openCommandPalette = () => setPaletteOpen(true);
 
@@ -22,8 +24,28 @@ export function CommandPalette() {
   const { data: sprints } = useSprints();
   const { data: groups } = useMyGroups();
   const router = useRouter();
+  const path = usePathname();
+  // Readiness report acts on the open sprint, falling back to the first one.
+  const reportTarget = sprints?.find((s) => path.startsWith(`/app/s/${s.id}`))?.id ?? sprints?.[0]?.id;
+  // Weekly digest: the open group, else the one linked to the open sprint, else the first.
+  const digestTarget =
+    groups?.find((g) => path.startsWith(`/app/groups/${g.id}`))?.id ??
+    groups?.find((g) => g.sprint_id === reportTarget)?.id ??
+    groups?.[0]?.id;
   const { resolvedTheme, setTheme } = useTheme();
   const [accent, setAccent] = useAccent({ syncToAccount: true });
+  const [search, setSearch] = useState("");
+  const aiText = search.trim();
+  const showAi = Boolean(ctx?.aiFilter) && aiText.split(/\s+/).length >= 3;
+  const aiActions = ctx?.actions.filter((a) => a.ai) ?? [];
+  const otherActions = ctx?.actions.filter((a) => !a.ai) ?? [];
+
+  // Start fresh each time the palette opens (state adjusted during render, not in an effect).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (open) setSearch("");
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -44,12 +66,59 @@ export function CommandPalette() {
   return (
     <CommandDialog open={open} onOpenChange={setPaletteOpen} title="Command palette" description="Search problems, sprints and actions">
       <Command>
-        <CommandInput placeholder="Search problems, sprints, actions…" />
+        <CommandInput value={search} onValueChange={setSearch} placeholder="Search problems, sprints, actions…" />
         <CommandList className="max-h-[60vh]">
-          <CommandEmpty>No results.</CommandEmpty>
-          {ctx && ctx.actions.length > 0 && (
+          {!showAi && <CommandEmpty>No results.</CommandEmpty>}
+          {showAi && ctx?.aiFilter && (
+            <CommandGroup heading="AI" forceMount>
+              {/* forceMount keeps cmdk's fuzzy match from hiding it; the value makes it rank first. */}
+              <CommandItem forceMount value={`ai-filter ${aiText}`} onSelect={run(() => void ctx.aiFilter!(aiText))}>
+                <AiSparkle />
+                <span className="truncate">Filter with AI: “{aiText}”</span>
+              </CommandItem>
+            </CommandGroup>
+          )}
+          {!showAi && (
+            <CommandGroup heading="AI">
+              {aiActions.map((a) => (
+                <CommandItem key={a.id} value={`ai ${a.label}`} keywords={["ai", "smart", "natural language"]} onSelect={run(a.run)}>
+                  <AiSparkle /> <span className="ai-text font-medium">{a.label}</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              ))}
+              <CommandItem value="ai-tour-guide" keywords={["ai", "tour", "guide", "features"]} onSelect={run(() => openAiTour(0))}>
+                <AiSparkle /> <span className="ai-text font-medium">Explore AI features tour</span>
+                <AiBadge label="Tour" className="ml-auto" />
+              </CommandItem>
+              <CommandItem value="ai generate sprint sheet from a goal" keywords={["ai", "generate", "plan", "natural language"]} onSelect={run(() => router.push("/app/import"))}>
+                <AiSparkle /> <span className="ai-text font-medium">Generate a sheet from your goal</span>
+                <AiBadge className="ml-auto" />
+              </CommandItem>
+              {reportTarget && (
+                <CommandItem
+                  value="ai readiness report share progress"
+                  keywords={["ai", "readiness", "report", "share", "scout", "company"]}
+                  onSelect={run(() => router.push(`/app/s/${reportTarget}/stats?report=1`))}
+                >
+                  <AiSparkle /> <span className="ai-text font-medium">Generate readiness report</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              )}
+              {digestTarget && (
+                <CommandItem
+                  value="ai group weekly digest summary this week"
+                  keywords={["ai", "group", "weekly", "digest", "summary", "pair", "nudge"]}
+                  onSelect={run(() => router.push(`/app/groups/${digestTarget}#weekly-digest`))}
+                >
+                  <AiSparkle /> <span className="ai-text font-medium">Group weekly digest</span>
+                  <AiBadge className="ml-auto" />
+                </CommandItem>
+              )}
+            </CommandGroup>
+          )}
+          {otherActions.length > 0 && (
             <CommandGroup heading="Actions">
-              {ctx.actions.map((a) => (
+              {otherActions.map((a) => (
                 <CommandItem key={a.id} onSelect={run(a.run)}>
                   <Zap /> {a.label}
                   {a.shortcut && <CommandShortcut>{a.shortcut}</CommandShortcut>}

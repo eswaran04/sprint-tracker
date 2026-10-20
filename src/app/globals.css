@@ -149,6 +149,8 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
   }
 }
 
@@ -165,6 +167,79 @@
     background-size: 48px 48px;
     mask-image: radial-gradient(ellipse at top, black 30%, transparent 75%);
   }
+}
+
+/*
+ * AI feature styling (Gemini-style blue → violet → pink). Deliberately unlayered so it wins over the
+ * Tailwind utilities on <Button>/<Input> (bg-*, border-*, shadow-*) without needing !important.
+ */
+:root {
+  --ai-1: oklch(0.6 0.2 255);
+  --ai-2: oklch(0.58 0.24 295);
+  --ai-3: oklch(0.66 0.23 350);
+}
+.dark {
+  --ai-1: oklch(0.72 0.16 250);
+  --ai-2: oklch(0.7 0.19 295);
+  --ai-3: oklch(0.74 0.18 350);
+}
+
+@property --ai-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes ai-spin {
+  to { --ai-angle: 360deg; }
+}
+
+/* Animated gradient border: opaque fill on the padding box, rotating conic gradient on the border box. */
+.ai-border {
+  --ai-fill: var(--background);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--ai-fill), var(--ai-fill)) padding-box,
+    conic-gradient(from var(--ai-angle), var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-2), var(--ai-1)) border-box;
+  animation: ai-spin 4s linear infinite;
+}
+.ai-border:hover:not(:disabled) {
+  --ai-fill: color-mix(in oklch, var(--background), var(--ai-2) 8%);
+}
+.ai-glow {
+  box-shadow: 0 0 14px -4px color-mix(in oklch, var(--ai-2) 55%, transparent);
+  transition: box-shadow 0.2s ease;
+}
+.ai-glow:hover:not(:disabled),
+.ai-glow:focus-visible {
+  box-shadow: 0 0 18px -2px color-mix(in oklch, var(--ai-2) 65%, transparent);
+}
+.ai-text {
+  background: linear-gradient(90deg, var(--ai-1), var(--ai-2), var(--ai-3));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+.ai-badge {
+  background: linear-gradient(90deg, var(--ai-1), var(--ai-2), var(--ai-3));
+  color: oklch(0.99 0 0);
+}
+/* Filled gradient CTA (primary AI actions) with a slow shimmer. */
+@keyframes ai-shimmer {
+  to { background-position: 200% 0; }
+}
+.ai-fill {
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--ai-1), var(--ai-2), var(--ai-3), var(--ai-2), var(--ai-1)) 0 0 / 200% 100%;
+  color: oklch(0.99 0 0);
+  animation: ai-shimmer 6s linear infinite;
+  box-shadow: 0 4px 16px -6px color-mix(in oklch, var(--ai-2) 70%, transparent);
+}
+.ai-fill:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 6px 20px -4px color-mix(in oklch, var(--ai-2) 75%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-border, .ai-fill { animation: none; }
 }
 
 /* Markdown notes */

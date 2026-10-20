@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { useMemo } from "react";
 import { toast } from "sonner";
-import { getGroup, groupActivity, groupProgress, groupReactions, listMyGroups, myNudges, toggleReaction } from "@/lib/api";
+import { getGroup, groupActivity, groupDigest, groupProgress, groupReactions, listMyGroups, myNudges, toggleReaction } from "@/lib/api";
 import { activityItems } from "@/lib/activity";
 import { leaderboard, progressIndex } from "@/lib/groups";
 import type { GroupReaction } from "@/lib/types";
@@ -45,6 +45,18 @@ export function useGroupProgress(groupId: string | null | undefined) {
       error: group.error ?? progress.error,
     };
   }, [group.data, group.isLoading, group.isFetched, group.error, progress.data, progress.isLoading, progress.error]);
+}
+
+/** Weekly AI digest for a group. Keyed by local day; refreshed at most every 30 minutes (and on group refresh). */
+export function useGroupDigest(groupId: string | null | undefined) {
+  const today = format(new Date(), "yyyy-MM-dd");
+  return useQuery({
+    queryKey: ["group-digest", groupId, today],
+    queryFn: () => groupDigest(groupId!, today),
+    enabled: Boolean(groupId),
+    staleTime: 30 * 60_000,
+    retry: false,
+  });
 }
 
 /** Unseen nudges from group members, checked every minute and on focus. */

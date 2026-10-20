@@ -45,3 +45,6 @@ next-env.d.ts
 # firebase
 firebase-debug.log*
 .firebase/
+
+# benchmark run output (baseline in bench/baseline is committed)
+/bench/results/
