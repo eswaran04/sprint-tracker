@@ -5,11 +5,24 @@ import { upsertUser } from "@/lib/db/session";
 
 export const runtime = "nodejs";
 
+/**
+ * CSRF: only accept same-origin posts. Compares hosts, not full origins: behind a TLS-terminating proxy
+ * (App Hosting) the server sees its internal http URL, and the public host arrives in x-forwarded-host.
+ */
+function isSameOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
+}
+
 /** Exchanges a fresh Firebase ID token (from the Google popup) for an httpOnly session cookie. */
 export async function POST(request: NextRequest) {
-  // CSRF: only accept same-origin posts.
-  const origin = request.headers.get("origin");
-  if (origin && origin !== request.nextUrl.origin) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
+  if (!isSameOrigin(request)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
 
   const body = (await request.json().catch(() => null)) as { idToken?: unknown } | null;
   if (typeof body?.idToken !== "string") return NextResponse.json({ error: "Missing token" }, { status: 400 });

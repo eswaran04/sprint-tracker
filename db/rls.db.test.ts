@@ -28,7 +28,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await pool().end();
+  await (await pool()).end();
   // The app role can't delete users (by design); clean up with the owner role when available.
   const url = process.env.MIGRATION_DATABASE_URL;
   if (url) {

@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-sprintboard"
+    "default": "demo-sprintboard",
+    "prod": "sprint-tracker-126ab"
   }
 }
